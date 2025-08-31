@@ -1,0 +1,36 @@
+# Video files (large files that shouldn't be in Git)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+
+# Test files and outputs
+*_LOOPER.*
+*_loop.*
+test_*.mp4
+test_*.mov
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp_*
