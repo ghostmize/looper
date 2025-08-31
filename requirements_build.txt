@@ -1,0 +1,12 @@
+# Requirements for building Looper executable
+# Core dependencies (already in requirements.txt)
+opencv-python>=4.5.0
+Pillow>=8.0.0
+numpy>=1.19.0
+
+# Build dependencies
+pyinstaller>=5.0.0
+
+# Optional: UPX for smaller executable size
+# Download UPX from https://upx.github.io/ and add to PATH for smaller .exe files
+
