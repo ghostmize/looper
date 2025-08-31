@@ -35,7 +35,10 @@ a = Analysis(
     ['looper.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('looper_logo.png', '.'),
+        ('looper_icon.ico', '.')
+    ],
     hiddenimports=[
         'tkinter',
         'tkinter.ttk',

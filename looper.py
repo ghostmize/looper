@@ -18,6 +18,13 @@ class LooperApp:
         self.root.geometry("950x800")
         self.root.configure(bg='#0a0a0f')
         
+        # Set window icon if available
+        try:
+            if os.path.exists('looper_icon.ico'):
+                self.root.iconbitmap('looper_icon.ico')
+        except:
+            pass
+        
         # Define color scheme
         self.colors = {
             'bg_primary': '#0a0a0f',      # Dark background
@@ -50,6 +57,9 @@ class LooperApp:
         self.setup_ui()
         self.load_settings()
         
+        # Check initial format after settings are loaded
+        self.root.after(100, self.check_initial_format)
+        
     def setup_ui(self):
         # Configure styles
         self.setup_styles()
@@ -71,7 +81,7 @@ class LooperApp:
         title_container.pack(side=tk.LEFT)
         
         # Simple loop icon (minimal)
-        self.create_minimal_logo(title_container)
+        self.setup_logo(title_container)
         
         # Title and subtitle in horizontal layout
         text_container = tk.Frame(title_container, bg=self.colors['bg_primary'])
@@ -182,22 +192,30 @@ class LooperApp:
     def setup_logo(self, parent):
         """Setup logo if available"""
         try:
+            from PIL import Image, ImageTk
+            
             if os.path.exists('looper_logo.png'):
-                from PIL import Image, ImageTk
-                # Load and resize logo
                 logo_img = Image.open('looper_logo.png')
-                logo_img = logo_img.resize((64, 64), Image.Resampling.LANCZOS)
+                # Resize to 40x40 for the UI
+                logo_img = logo_img.resize((40, 40), Image.Resampling.LANCZOS)
                 self.logo_photo = ImageTk.PhotoImage(logo_img)
                 
                 logo_label = tk.Label(
                     parent,
                     image=self.logo_photo,
-                    bg='#0a0a0f'
+                    bg=self.colors['bg_primary']
                 )
                 logo_label.pack(side=tk.LEFT)
+                print("✅ Loaded high-quality logo")
+                return True
+                    
         except Exception as e:
-            # If logo loading fails, create a simple geometric logo
-            self.create_simple_logo(parent)
+            print(f"Could not load logo: {e}")
+        
+        # If logo loading fails, create a simple geometric logo
+        print("⚠️ Using fallback canvas logo")
+        self.create_minimal_logo(parent)
+        return False
     
     def create_simple_logo(self, parent):
         """Create a simple geometric logo using canvas"""
@@ -256,7 +274,7 @@ class LooperApp:
         return button
     
     def create_minimal_logo(self, parent):
-        """Create a minimal geometric logo"""
+        """Create a minimal geometric logo with anti-aliasing simulation"""
         canvas = tk.Canvas(parent, width=40, height=40, bg=self.colors['bg_primary'], highlightthickness=0)
         canvas.pack(side=tk.LEFT)
         
@@ -264,13 +282,24 @@ class LooperApp:
         center = 20
         radius = 15
         
+        # Create multiple circles for anti-aliasing effect
+        for i in range(3):
+            r = radius - i
+            alpha = 255 - (i * 50)
+            color = f"#{hex(8)[2:].zfill(2)}{hex(195)[2:].zfill(2)}{hex(217)[2:].zfill(2)}"
+            canvas.create_oval(center-r, center-r, center+r, center+r, 
+                             outline=color, width=1)
+        
         # Main loop circle
         canvas.create_oval(center-radius, center-radius, center+radius, center+radius, 
-                         outline=self.colors['cyan'], width=3)
+                         outline=self.colors['cyan'], width=2)
         
-        # Inner accent
-        canvas.create_oval(center-8, center-8, center+8, center+8, 
-                         outline=self.colors['pink'], width=2)
+        # Inner accent with multiple layers
+        for i in range(2):
+            r = 8 - i
+            color = f"#{hex(255)[2:].zfill(2)}{hex(0)[2:].zfill(2)}{hex(122)[2:].zfill(2)}"
+            canvas.create_oval(center-r, center-r, center+r, center+r, 
+                             outline=color, width=1)
     
     def show_about(self, event=None):
         """Show About dialog"""
@@ -605,8 +634,7 @@ class LooperApp:
         # Bind format change to show/hide settings button
         format_combo.bind('<<ComboboxSelected>>', self.on_format_change)
         
-        # Check initial format and show button if needed
-        self.check_initial_format()
+        # Format check will be done after settings are loaded
     
     def setup_action_section(self, main_frame):
         """Setup the action buttons section"""
@@ -1093,52 +1121,24 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         if not self.video_paths or self.is_processing:
             return
         
-        # For single file, ask for specific output path
-        if len(self.video_paths) == 1:
-            # Determine correct extension
+        # Ask for output directory (same for single and multiple files)
+        output_dir = filedialog.askdirectory(
+            title="Select Output Directory for Looped Videos"
+        )
+        
+        if not output_dir:
+            return
+        
+        # Generate output paths for all files
+        self.output_paths = []
+        for video_info in self.video_infos:
+            base_name = os.path.splitext(video_info['filename'])[0]
+            extension = f".{self.format_var.get().lower()}"
             if self.format_var.get() == "HAP":
-                extension = "mov"
-                file_desc = "HAP (MOV) files"
-            else:
-                extension = self.format_var.get().lower()
-                file_desc = f"{self.format_var.get()} files"
+                extension = ".mov"  # HAP uses .mov extension
             
-            output_path = filedialog.asksaveasfilename(
-                title="Save Looped Video",
-                defaultextension=f".{extension}",
-                filetypes=[
-                    (file_desc, f"*.{extension}"),
-                    ("All files", "*.*")
-                ]
-            )
-            
-            if not output_path:
-                return
-            
-            # Ensure correct extension
-            if self.format_var.get() == "HAP" and not output_path.lower().endswith('.mov'):
-                output_path = os.path.splitext(output_path)[0] + '.mov'
-            
-            self.output_paths = [output_path]
-        else:
-            # For multiple files, ask for output directory
-            output_dir = filedialog.askdirectory(
-                title="Select Output Directory for Batch Processing"
-            )
-            
-            if not output_dir:
-                return
-            
-            # Generate output paths for all files
-            self.output_paths = []
-            for video_info in self.video_infos:
-                base_name = os.path.splitext(video_info['filename'])[0]
-                extension = f".{self.format_var.get().lower()}"
-                if self.format_var.get() == "HAP":
-                    extension = ".mov"  # HAP uses .mov extension
-                
-                output_path = os.path.join(output_dir, f"{base_name}_loop{extension}")
-                self.output_paths.append(output_path)
+            output_path = os.path.join(output_dir, f"{base_name}_LOOPER{extension}")
+            self.output_paths.append(output_path)
         
         self.current_processing_index = 0
         self.is_processing = True
@@ -1241,11 +1241,29 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         if overlap_duration >= total_duration:
             overlap_duration = total_duration * 0.1  # Use 10% of video as fallback
         
-        # Create a simpler, more robust filter that works better with H.264
-        # This creates a seamless loop by duplicating the video and crossfading
-        filter_str = f"""[0:v]trim=0:{total_duration},setpts=PTS-STARTPTS[v1];
-[0:v]trim=0:{total_duration},setpts=PTS-STARTPTS[v2];
-[v1][v2]xfade=transition=fade:duration={overlap_duration}:offset={total_duration-overlap_duration}[outv]"""
+        # Calculate when to start the fade (end of video minus overlap)
+        fade_start_time = total_duration - overlap_duration
+        
+        # Perfect Loop Technique - Your Description:
+        # 1. Duplicate clip
+        # 2. Trim duplicate so it starts X seconds before end of original  
+        # 3. Shorten sequence to original length (no extra runtime)
+        # 4. Move duplicate to beginning of timeline, under original
+        # 5. Crossfade: Duplicate fades OUT (100% → 0%), Original visible (0% → 100%)
+        
+        # CORRECT IMPLEMENTATION - Following Your EXACT Instructions:
+        # 1. Duplicate the clip ✓
+        # 2. Trim duplicate so it begins X seconds BEFORE THE END (not beginning!)
+        # 3. Shorten sequence to original length - X 
+        # 4. Place duplicate at the START (not end!)
+        # 5. Fade duplicate OUT over X seconds
+        
+        # Calculate the correct durations
+        trim_start = total_duration - overlap_duration  # Start X seconds before end
+        output_duration = total_duration - overlap_duration  # Shorter final length
+        
+        # Correct filter following your exact steps:
+        filter_str = f"[0:v]trim=0:{output_duration},setpts=PTS-STARTPTS[base];[0:v]trim={trim_start}:{total_duration},setpts=PTS-STARTPTS,fade=t=out:st=0:d={overlap_duration}:alpha=1[overlay];[base][overlay]overlay[outv]"
         
         return filter_str
     
@@ -1426,6 +1444,19 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 '-pix_fmt', 'yuv420p',  # Ensure compatibility with H.264
                 output_path
             ]
+            
+            # Debug: Print the exact command and filter being used
+            print("=" * 60)
+            print("DEBUGGING LOOP FILTER:")
+            print("Input path:", input_path)
+            print("Output path:", output_path)
+            print("Overlap frames:", overlap_frames)
+            print("Total frames:", total_frames)
+            print("FPS:", fps)
+            print("Filter complex:")
+            print(self.build_filter_complex(overlap_frames, total_frames, fps))
+            print("FFmpeg command:", ' '.join(ffmpeg_cmd))
+            print("=" * 60)
             
             # Execute ffmpeg command
             process = subprocess.Popen(
