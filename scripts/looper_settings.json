@@ -1,7 +1,7 @@
 {
-  "overlap_time": 2.0,
+  "overlap_time": 1.0,
   "overlap_mode": "seconds",
   "output_format": "HAP",
-  "quality_crf": 12,
+  "quality_crf": 18,
   "recent_files": []
 }

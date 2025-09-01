@@ -10,38 +10,37 @@ import numpy as np
 from datetime import datetime
 import tempfile
 import shutil
+import re
 
 class LooperApp:
     def __init__(self, root):
         self.root = root
         self.root.title("◉ LOOPER v0.9 - Perfect Video Loops")
-        self.root.geometry("950x800")
-        self.root.configure(bg='#0a0a0f')
+        self.root.geometry("950x950")
         
-        # Set window icon if available
-        try:
-            if os.path.exists('looper_icon.ico'):
-                self.root.iconbitmap('looper_icon.ico')
-        except:
-            pass
-        
-        # Define color scheme
+        # Unified color scheme - modern dark theme (cyan + magenta only)
         self.colors = {
-            'bg_primary': '#0a0a0f',      # Dark background
+            'bg_primary': '#0a0a0f',      # Main background
             'bg_secondary': '#1a1a2a',    # Secondary background
             'bg_container': '#2a2a3a',    # Container background
-            'cyan': '#08c3d9',            # Primary cyan
-            'pink': '#ff007a',            # Primary pink
-            'white': '#ffffff',           # White text
-            'gray': '#666677'             # Gray text
+            'accent_primary': '#08c3d9',  # Primary accent (cyan)
+            'accent_secondary': '#ff007a', # Secondary accent (magenta)
+            'text_primary': '#ffffff',    # Primary text
+            'text_secondary': '#cccccc',  # Secondary text
+            'text_muted': '#666677',      # Muted text
+            'success': '#08c3d9',         # Success (cyan)
+            'warning': '#ff007a',         # Warning (magenta)
+            'error': '#ff007a'            # Error (magenta)
         }
+        
+        self.root.configure(bg=self.colors['bg_primary'])
         self.root.resizable(True, True)
-        self.root.minsize(800, 600)
+        self.root.minsize(800, 850)
         
         # Set window icon if available
         try:
-            if os.path.exists('looper_icon.ico'):
-                self.root.iconbitmap('looper_icon.ico')
+            if os.path.exists('..\\assets\\icons\\looper_icon.ico'):
+                self.root.iconbitmap('..\\assets\\icons\\looper_icon.ico')
         except:
             pass
         
@@ -53,6 +52,7 @@ class LooperApp:
         
         # Processing state
         self.is_processing = False
+        self.current_video_duration = 0  # For progress calculation
         
         self.setup_ui()
         self.load_settings()
@@ -60,17 +60,20 @@ class LooperApp:
         # Check initial format after settings are loaded
         self.root.after(100, self.check_initial_format)
         
+        # Bind resize event to update progress bar
+        self.root.bind('<Configure>', self.on_window_resize)
+        
     def setup_ui(self):
         # Configure styles
         self.setup_styles()
         
         # Main container with gradient-like effect
         main_frame = tk.Frame(self.root, bg=self.colors['bg_primary'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
         
         # Header section - horizontal, classy, minimal
         header_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
-        header_frame.pack(fill=tk.X, pady=(0, 25))
+        header_frame.pack(fill=tk.X, pady=(0, 30))
         
         # Left side - Logo and title (horizontal layout)
         left_header = tk.Frame(header_frame, bg=self.colors['bg_primary'])
@@ -91,7 +94,7 @@ class LooperApp:
             text_container, 
             text="LOOPER", 
             font=("Consolas", 28, "bold"), 
-            fg=self.colors['cyan'], 
+            fg=self.colors['accent_primary'], 
             bg=self.colors['bg_primary']
         )
         title_label.pack(side=tk.LEFT)
@@ -100,7 +103,7 @@ class LooperApp:
             text_container, 
             text=" • Perfect Video Loops", 
             font=("Consolas", 14), 
-            fg=self.colors['white'], 
+            fg=self.colors['text_secondary'], 
             bg=self.colors['bg_primary']
         )
         subtitle_label.pack(side=tk.LEFT, padx=(10, 0))
@@ -114,7 +117,7 @@ class LooperApp:
             right_header, 
             text="Ghosteam", 
             font=("Consolas", 12, "bold"), 
-            fg=self.colors['white'], 
+            fg=self.colors['text_secondary'], 
             bg=self.colors['bg_primary'],
             cursor="hand2"
         )
@@ -124,7 +127,7 @@ class LooperApp:
             right_header, 
             text=" | ", 
             font=("Consolas", 12), 
-            fg=self.colors['gray'], 
+            fg=self.colors['text_muted'], 
             bg=self.colors['bg_primary']
         )
         separator_label.pack(side=tk.RIGHT)
@@ -133,24 +136,24 @@ class LooperApp:
             right_header, 
             text="v0.9", 
             font=("Consolas", 12, "bold"), 
-            fg=self.colors['pink'], 
+            fg=self.colors['accent_secondary'], 
             bg=self.colors['bg_primary']
         )
         version_label.pack(side=tk.RIGHT)
         
         # Add hover effect to Ghosteam
         def on_ghosteam_enter(e):
-            self.ghosteam_label.config(fg=self.colors['pink'])
+            self.ghosteam_label.config(fg=self.colors['accent_secondary'])
         def on_ghosteam_leave(e):
-            self.ghosteam_label.config(fg=self.colors['white'])
+            self.ghosteam_label.config(fg=self.colors['text_secondary'])
         
         self.ghosteam_label.bind("<Enter>", on_ghosteam_enter)
         self.ghosteam_label.bind("<Leave>", on_ghosteam_leave)
         self.ghosteam_label.bind("<Button-1>", self.show_about)
         
         # Elegant separator line
-        separator_frame = tk.Frame(header_frame, bg=self.colors['cyan'], height=2)
-        separator_frame.pack(fill=tk.X, pady=(15, 0))
+        separator_frame = tk.Frame(header_frame, bg=self.colors['accent_primary'], height=1)
+        separator_frame.pack(fill=tk.X, pady=(20, 0))
         
         # Setup file selection section
         self.setup_file_section(main_frame)
@@ -164,8 +167,7 @@ class LooperApp:
         # Setup progress section
         self.setup_progress_section(main_frame)
         
-        # Setup recent files section
-        self.setup_recent_files_section(main_frame)
+        # Recent files section removed for cleaner UI
     
     def setup_styles(self):
         """Setup custom styles for ttk widgets"""
@@ -175,19 +177,19 @@ class LooperApp:
                 # Configure futuristic combobox style
         style.configure('Futuristic.TCombobox',
                         fieldbackground=self.colors['bg_secondary'],
-                        background=self.colors['cyan'],
-                        foreground=self.colors['cyan'],
+                        background=self.colors['accent_primary'],
+                        foreground=self.colors['accent_primary'],
                         borderwidth=1,
                         relief='flat',
-                        focuscolor=self.colors['cyan'])
+                        focuscolor=self.colors['accent_primary'])
         
-                # Configure futuristic progressbar
+                # Configure futuristic progressbar (keeping for compatibility)
         style.configure('Futuristic.Horizontal.TProgressbar',
-                        background=self.colors['cyan'],
+                        background=self.colors['accent_primary'],
                         troughcolor=self.colors['bg_container'],
                         borderwidth=0,
-                        lightcolor=self.colors['cyan'],
-                        darkcolor=self.colors['cyan'])
+                        lightcolor=self.colors['accent_primary'],
+                        darkcolor=self.colors['accent_primary'])
     
     def setup_logo(self, parent):
         """Setup logo if available"""
@@ -235,35 +237,42 @@ class LooperApp:
         
         # Main loop
         canvas.create_oval(center-radius, center-radius, center+radius, center+radius, 
-                         outline='#00ffaa', width=3)
+                         outline=self.colors['accent_primary'], width=3)
         
         # Inner infinity symbol
-        canvas.create_oval(center-10, center-5, center, center+5, outline='#ffffff', width=2)
-        canvas.create_oval(center, center-5, center+10, center+5, outline='#ffffff', width=2)
+        canvas.create_oval(center-10, center-5, center, center+5, outline=self.colors['text_primary'], width=2)
+        canvas.create_oval(center, center-5, center+10, center+5, outline=self.colors['text_primary'], width=2)
     
-    def create_futuristic_button(self, parent, text, command, bg_color='#1a1a2a', fg_color='#00ffaa', hover_color='#00ffaa'):
+    def create_futuristic_button(self, parent, text, command, bg_color=None, fg_color=None, hover_color=None):
         """Create a futuristic-styled button with hover effects"""
+        if bg_color is None:
+            bg_color = self.colors['bg_container']
+        if fg_color is None:
+            fg_color = self.colors['accent_primary']
+        if hover_color is None:
+            hover_color = self.colors['accent_primary']
+            
         button = tk.Button(
             parent,
             text=text,
             command=command,
-            font=("Consolas", 10, "bold"),
+            font=("Consolas", 11, "bold"),
             bg=bg_color,
             fg=fg_color,
             activebackground=hover_color,
-            activeforeground='#000000',
+            activeforeground=self.colors['bg_primary'],
             relief="flat",
-            padx=20,
-            pady=12,
+            padx=25,
+            pady=15,
             cursor="hand2",
-            bd=1,
+            bd=0,
             highlightbackground=hover_color,
-            highlightthickness=1
+            highlightthickness=0
         )
         
         # Add hover effects
         def on_enter(e):
-            button.config(bg=hover_color, fg='#000000')
+            button.config(bg=hover_color, fg=self.colors['bg_primary'])
         
         def on_leave(e):
             button.config(bg=bg_color, fg=fg_color)
@@ -292,7 +301,7 @@ class LooperApp:
         
         # Main loop circle
         canvas.create_oval(center-radius, center-radius, center+radius, center+radius, 
-                         outline=self.colors['cyan'], width=2)
+                         outline=self.colors['accent_primary'], width=2)
         
         # Inner accent with multiple layers
         for i in range(2):
@@ -322,7 +331,7 @@ class LooperApp:
             main_container,
             text="LOOPER v0.9",
             font=("Consolas", 18, "bold"),
-            fg=self.colors['cyan'],
+            fg=self.colors['accent_primary'],
             bg=self.colors['bg_primary']
         )
         title_label.pack(pady=(0, 15))
@@ -332,7 +341,7 @@ class LooperApp:
             main_container,
             text="This is a free tool made by",
             font=("Consolas", 12),
-            fg=self.colors['white'],
+            fg=self.colors['text_secondary'],
             bg=self.colors['bg_primary']
         )
         desc_label.pack()
@@ -342,7 +351,7 @@ class LooperApp:
             main_container,
             text="Ghosteam",
             font=("Consolas", 12, "bold"),
-            fg=self.colors['pink'],
+            fg=self.colors['accent_secondary'],
             bg=self.colors['bg_primary'],
             cursor="hand2"
         )
@@ -353,9 +362,9 @@ class LooperApp:
             webbrowser.open("https://www.ghosteaminc.com")
         
         def on_link_enter(e):
-            ghosteam_link.config(fg=self.colors['cyan'])
+            ghosteam_link.config(fg=self.colors['accent_primary'])
         def on_link_leave(e):
-            ghosteam_link.config(fg=self.colors['pink'])
+            ghosteam_link.config(fg=self.colors['accent_secondary'])
         
         ghosteam_link.bind("<Button-1>", open_website)
         ghosteam_link.bind("<Enter>", on_link_enter)
@@ -366,7 +375,7 @@ class LooperApp:
             main_container,
             text="Contact via our shop for any requests",
             font=("Consolas", 10),
-            fg=self.colors['gray'],
+            fg=self.colors['text_muted'],
             bg=self.colors['bg_primary']
         )
         contact_label.pack(pady=(0, 15))
@@ -378,8 +387,8 @@ class LooperApp:
             command=about_window.destroy,
             font=("Consolas", 10, "bold"),
             bg=self.colors['bg_container'],
-            fg=self.colors['white'],
-            activebackground=self.colors['cyan'],
+            fg=self.colors['text_primary'],
+            activebackground=self.colors['accent_primary'],
             activeforeground=self.colors['bg_primary'],
             relief="flat",
             padx=20,
@@ -405,7 +414,7 @@ class LooperApp:
             file_section,
             text="INPUT SOURCE",
             font=("Consolas", 14, "bold"),
-            fg=self.colors['cyan'],
+            fg=self.colors['text_primary'],
             bg=self.colors['bg_primary']
         )
         file_header.pack(anchor='w', pady=(0, 12))
@@ -422,78 +431,310 @@ class LooperApp:
         button_container = tk.Frame(file_inner, bg=self.colors['bg_secondary'])
         button_container.pack(fill=tk.X, pady=(0, 12))
         
-        # Create buttons that fill horizontal space
-        self.single_file_button = self.create_futuristic_button(
-            button_container, "SINGLE FILE", self.select_single_file, 
-            bg_color=self.colors['bg_container'], fg_color=self.colors['cyan'], hover_color=self.colors['cyan']
+        # Add drag and drop hint text above buttons
+        drag_hint_label = tk.Label(
+            file_inner,
+            text="📁 Drag & drop video files anywhere in this area or use buttons below",
+            font=("Consolas", 9),
+            fg=self.colors['text_muted'],
+            bg=self.colors['bg_secondary']
         )
-        self.single_file_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        drag_hint_label.pack(anchor='center', pady=(0, 8))
         
-        self.multi_file_button = self.create_futuristic_button(
-            button_container, "MULTIPLE FILES", self.select_multiple_files,
-            bg_color=self.colors['bg_container'], fg_color=self.colors['pink'], hover_color=self.colors['pink']
+        # Create combined file selection button
+        self.add_files_button = self.create_futuristic_button(
+            button_container, "ADD FILES", self.select_files, 
+            bg_color=self.colors['bg_container'], fg_color=self.colors['accent_primary'], hover_color=self.colors['accent_primary']
         )
-        self.multi_file_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 4))
+        self.add_files_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         
         self.batch_folder_button = self.create_futuristic_button(
             button_container, "BATCH FOLDER", self.select_batch_folder,
-            bg_color=self.colors['bg_container'], fg_color=self.colors['white'], hover_color=self.colors['white']
+            bg_color=self.colors['bg_container'], fg_color=self.colors['accent_primary'], hover_color=self.colors['accent_primary']
         )
         self.batch_folder_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
+        
+        # Setup drag and drop for the entire file section (not just buttons)
+        self.setup_drag_drop(file_container)
         
         # File list display with elegant styling
         list_header = tk.Label(
             file_inner,
-            text="▸ SELECTED FILES",
+            text="▸ QUEUE FILES",
             font=("Consolas", 10, "bold"),
-            fg='#44ffaa',
-            bg='#111122'
+            fg=self.colors['accent_primary'],
+            bg=self.colors['bg_secondary']
         )
         list_header.pack(anchor='w', pady=(15, 8))
         
         # Files listbox with futuristic styling
-        listbox_container = tk.Frame(file_inner, bg='#1a1a2a', relief='solid', bd=1)
+        listbox_container = tk.Frame(file_inner, bg=self.colors['bg_container'], relief='solid', bd=1)
         listbox_container.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
         
         # Listbox with scrollbar
-        listbox_frame = tk.Frame(listbox_container, bg='#1a1a2a')
-        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        listbox_frame = tk.Frame(listbox_container, bg=self.colors['bg_container'])
+        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)  # Remove container padding
         
-        self.files_listbox = tk.Listbox(
-            listbox_frame,
-            font=("Consolas", 9),
-            bg='#1a1a2a',
-            fg='#00ffaa',
-            selectbackground='#00ffaa',
-            selectforeground='#000000',
-            relief="flat",
-            height=4,
-            highlightthickness=0,
-            activestyle='none'
-        )
+        # Left side - Listbox
+        listbox_left = tk.Frame(listbox_frame, bg=self.colors['bg_container'])
+        listbox_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        scrollbar = tk.Scrollbar(
-            listbox_frame, 
-            orient=tk.VERTICAL, 
-            command=self.files_listbox.yview,
-            bg='#2a2a3a',
-            troughcolor='#1a1a2a',
-            activebackground='#00ffaa'
-        )
-        self.files_listbox.configure(yscrollcommand=scrollbar.set)
+        # Create a frame for each file row instead of a listbox
+        self.files_container = tk.Frame(listbox_left, bg=self.colors['bg_container'])
+        self.files_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)  # No padding
         
-        self.files_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # We'll create individual file frames dynamically
+        self.file_frames = []
+        
+        # No scrollbar needed for individual file frames
+        
+        # Remove buttons are now part of individual file frames
         
         # File summary with elegant styling
         self.file_summary_label = tk.Label(
             file_inner,
             text="◦ No files selected",
             font=("Consolas", 9),
-            fg='#666677',
-            bg='#111122'
+            fg=self.colors['text_muted'],
+            bg=self.colors['bg_secondary']
         )
         self.file_summary_label.pack(anchor='w')
+    
+    def setup_drag_drop(self, widget):
+        """Setup drag and drop functionality for a widget"""
+        # Store original colors and relief for restoration
+        self.original_bg = widget.cget('bg')
+        self.original_relief = widget.cget('relief')
+        self.original_bd = widget.cget('bd')
+        # Also store original highlight properties if present
+        try:
+            self.original_highlight_bg = widget.cget('highlightbackground')
+            self.original_highlight_thickness = widget.cget('highlightthickness')
+        except Exception:
+            self.original_highlight_bg = ''
+            self.original_highlight_thickness = 0
+        self.drag_widget = widget
+        
+        def on_click(event):
+            """Handle click to open file dialog"""
+            try:
+                files = filedialog.askopenfilenames(
+                    title="Select Video Files",
+                    filetypes=[
+                        ("Video files", "*.mp4 *.mov *.avi *.mkv"),
+                        ("MP4 files", "*.mp4"),
+                        ("MOV files", "*.mov"),
+                        ("All files", "*.*")
+                    ]
+                )
+                if files:
+                    self.handle_dropped_files(list(files))
+            except Exception as e:
+                print(f"Error handling file selection: {e}")
+        
+        # Bind click event to open file dialog
+        widget.bind('<Button-1>', on_click)
+        
+        # Setup Windows drag and drop
+        self.setup_windows_drag_drop(widget)
+    
+    def on_drag_enter(self, event):
+        """Handle drag enter - show visual feedback with stroke highlight"""
+        if hasattr(self, 'drag_widget') and self.drag_widget:
+            self.drag_widget.config(
+                bg='#1a2a3a',  # Darker background
+                relief='solid',
+                bd=4,  # Thicker border for stronger emphasis
+                highlightbackground='#08c3d9',  # Cyan stroke
+                highlightcolor='#08c3d9',
+                highlightthickness=3  # Stroke thickness
+            )
+            # Update hint text
+            for child in self.drag_widget.winfo_children():
+                if isinstance(child, tk.Label) and "📁" in child.cget('text'):
+                    child.config(text="📁 Drop files here!", fg='#08c3d9')
+    
+    def on_drag_leave(self, event):
+        """Handle drag leave - restore original appearance"""
+        if hasattr(self, 'drag_widget') and self.drag_widget:
+            self.drag_widget.config(
+                bg=self.original_bg,
+                relief=self.original_relief,
+                bd=self.original_bd,
+                highlightbackground=self.original_highlight_bg if hasattr(self, 'original_highlight_bg') else '',
+                highlightcolor=self.original_highlight_bg if hasattr(self, 'original_highlight_bg') else '',
+                highlightthickness=self.original_highlight_thickness if hasattr(self, 'original_highlight_thickness') else 0
+            )
+            # Restore hint text
+            for child in self.drag_widget.winfo_children():
+                if isinstance(child, tk.Label) and "📁" in child.cget('text'):
+                    child.config(text="📁 Drag & drop video files anywhere in this area or use buttons below", fg='#666677')
+    
+    def setup_windows_drag_drop(self, widget):
+        """Setup Windows-specific drag and drop"""
+        try:
+            # Try to use tkinterdnd2 if available
+            import tkinterdnd2 as tkdnd
+            
+            # Make the widget a drop target
+            widget.drop_target_register(tkdnd.DND_FILES)
+            
+            # Bind drag-over events for visual feedback
+            widget.dnd_bind('<<DropEnter>>', self.on_drag_enter)
+            widget.dnd_bind('<<DropLeave>>', self.on_drag_leave)
+            widget.dnd_bind('<<Drop>>', self.on_drop_files)
+            
+            print("✓ tkinterdnd2 drag and drop enabled with drag-over feedback")
+            
+        except ImportError:
+            print("tkinterdnd2 not available - using click-to-select mode")
+            # Update hint text to reflect click-only mode
+            for child in widget.winfo_children():
+                if isinstance(child, tk.Label) and "📁" in child.cget('text'):
+                    child.config(text="📁 Click here to select video files", fg='#666677')
+                    break
+        except Exception as e:
+            print(f"Error setting up tkinterdnd2 drag and drop: {e}")
+            # Fallback to click-only mode
+            for child in widget.winfo_children():
+                if isinstance(child, tk.Label) and "📁" in child.cget('text'):
+                    child.config(text="📁 Click here to select video files", fg='#666677')
+                    break
+    
+    def on_drop_files(self, event):
+        """Handle dropped files from tkinterdnd2"""
+        try:
+            print(f"Drop event received: {event}")
+            print(f"Event data: {event.data}")
+            
+            if hasattr(event, 'data') and event.data:
+                # Parse dropped file data
+                files = self.parse_dropped_files(event.data)
+                print(f"Parsed files: {files}")
+                if files:
+                    self.handle_dropped_files(files)
+                else:
+                    print("No valid video files found in dropped data")
+            else:
+                print("No data in drop event")
+        except Exception as e:
+            print(f"Error handling dropped files: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Ensure highlight clears shortly after drop completes
+            if hasattr(self, 'root'):
+                self.root.after(10, lambda: self.on_drag_leave(event))
+    
+    def parse_dropped_files(self, data):
+        """Parse dropped file data"""
+        files = []
+        
+        try:
+            print(f"Parsing data: {data}")
+            print(f"Data type: {type(data)}")
+            
+            if isinstance(data, str):
+                # Handle tkinterdnd2 format - remove curly braces and split properly
+                # The data comes as: {path1} {path2} etc.
+                # We need to extract each path between curly braces
+                import re
+                
+                # Find all content between curly braces
+                pattern = r'\{([^}]+)\}'
+                matches = re.findall(pattern, data)
+                
+                if matches:
+                    # Use the regex matches
+                    files = [path.strip() for path in matches if path.strip()]
+                    print(f"Extracted file paths (regex): {files}")
+                else:
+                    # Fallback to other methods
+                    if '\n' in data:
+                        # Split by newlines
+                        file_paths = data.split('\n')
+                    elif '\r\n' in data:
+                        # Split by Windows line endings
+                        file_paths = data.split('\r\n')
+                    else:
+                        # Split by spaces and handle quoted paths
+                        import shlex
+                        file_paths = shlex.split(data)
+                    
+                    files = [path.strip() for path in file_paths if path.strip()]
+                    print(f"Extracted file paths (fallback): {files}")
+            
+            # Filter for video files
+            video_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.MP4', '.MOV', '.AVI', '.MKV']
+            video_files = []
+            
+            for file_path in files:
+                print(f"Checking file: {file_path}")
+                if any(file_path.lower().endswith(ext.lower()) for ext in video_extensions):
+                    video_files.append(file_path)
+                    print(f"Added video file: {file_path}")
+                else:
+                    print(f"Skipped non-video file: {file_path}")
+            
+            print(f"Final video files: {video_files}")
+            return video_files
+            
+        except Exception as e:
+            print(f"Error parsing dropped files: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def get_dropped_files_from_event(self, event):
+        """Extract file paths from drop event"""
+        try:
+            # Try to get files from the event data
+            if hasattr(event, 'data'):
+                return self.parse_dropped_files(event.data)
+            
+            # Try to get from clipboard
+            try:
+                import win32clipboard
+                win32clipboard.OpenClipboard()
+                try:
+                    data = win32clipboard.GetClipboardData(win32clipboard.CF_HDROP)
+                    files = data.split('\0')[:-1]  # Remove empty string at end
+                    win32clipboard.CloseClipboard()
+                    return files
+                except:
+                    win32clipboard.CloseClipboard()
+            except ImportError:
+                pass
+                
+        except Exception as e:
+            print(f"Error extracting dropped files: {e}")
+        
+        return []
+    
+    def handle_dropped_files(self, file_paths):
+        """Handle files dropped via drag and drop"""
+        if not file_paths:
+            return
+        
+        # Filter for video files
+        video_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.MP4', '.MOV', '.AVI', '.MKV']
+        video_files = []
+        
+        for file_path in file_paths:
+            if any(file_path.lower().endswith(ext.lower()) for ext in video_extensions):
+                video_files.append(file_path)
+        
+        if video_files:
+            # Add to existing list instead of replacing
+            self.video_paths.extend(video_files)
+            self.analyze_all_videos()
+            self.update_file_display()
+            self.process_button.config(state=tk.NORMAL)
+            
+            # Silent success - no popup messages
+            print(f"✓ Added {len(video_files)} video file(s) to queue")
+        else:
+            print("⚠️ No valid video files found in dropped items")
     
     def setup_settings_section(self, main_frame):
         """Setup the settings section with horizontal layout"""
@@ -506,7 +747,7 @@ class LooperApp:
             settings_section,
             text="LOOP PARAMETERS",
             font=("Consolas", 14, "bold"),
-            fg=self.colors['cyan'],
+            fg=self.colors['text_primary'],
             bg=self.colors['bg_primary']
         )
         settings_header.pack(anchor='w', pady=(0, 12))
@@ -524,7 +765,7 @@ class LooperApp:
         horizontal_settings.pack(fill=tk.X)
         
         settings_row = tk.Frame(horizontal_settings, bg=self.colors['bg_container'])
-        settings_row.pack(fill=tk.X, padx=15, pady=12)
+        settings_row.pack(fill=tk.X, padx=20, pady=15)
         
         # Left side - Crossfade Duration
         left_settings = tk.Frame(settings_row, bg=self.colors['bg_container'])
@@ -534,7 +775,7 @@ class LooperApp:
             left_settings,
             text="CROSSFADE DURATION",
             font=("Consolas", 11, "bold"),
-            fg=self.colors['pink'],
+            fg=self.colors['accent_secondary'],
             bg=self.colors['bg_container']
         ).pack(side=tk.LEFT)
         
@@ -552,13 +793,13 @@ class LooperApp:
             textvariable=self.overlap_var,
             font=("Consolas", 11, "bold"),
             bg=self.colors['bg_secondary'],
-            fg=self.colors['cyan'],
-            insertbackground=self.colors['cyan'],
+            fg=self.colors['accent_primary'],
+            insertbackground=self.colors['accent_primary'],
             relief="flat",
             width=6,
             bd=1,
-            buttonbackground=self.colors['cyan'],
-            selectbackground=self.colors['cyan'],
+            buttonbackground=self.colors['accent_primary'],
+            selectbackground=self.colors['accent_primary'],
             selectforeground=self.colors['bg_primary']
         )
         self.overlap_spinbox.pack(side=tk.LEFT)
@@ -569,9 +810,9 @@ class LooperApp:
             text="SEC",
             command=self.toggle_overlap_mode,
             font=("Consolas", 9, "bold"),
-            bg=self.colors['cyan'],
+            bg=self.colors['accent_primary'],
             fg=self.colors['bg_primary'],
-            activebackground=self.colors['pink'],
+            activebackground=self.colors['accent_secondary'],
             activeforeground=self.colors['bg_primary'],
             relief="flat",
             bd=0,
@@ -582,8 +823,8 @@ class LooperApp:
         self.overlap_toggle.pack(side=tk.LEFT, padx=(5, 0))
         
         # Separator
-        separator = tk.Frame(settings_row, bg=self.colors['pink'], width=2)
-        separator.pack(side=tk.LEFT, fill=tk.Y, padx=20)
+        separator = tk.Frame(settings_row, bg=self.colors['accent_primary'], width=1)
+        separator.pack(side=tk.LEFT, fill=tk.Y, padx=25)
         
         # Right side - Output Format
         right_settings = tk.Frame(settings_row, bg=self.colors['bg_container'])
@@ -593,7 +834,7 @@ class LooperApp:
             right_settings,
             text="OUTPUT FORMAT",
             font=("Consolas", 11, "bold"),
-            fg=self.colors['pink'],
+            fg=self.colors['accent_secondary'],
             bg=self.colors['bg_container']
         ).pack(side=tk.LEFT)
         
@@ -620,9 +861,9 @@ class LooperApp:
             text="⚙️",
             command=self.show_quality_slider,
             font=("Consolas", 10, "bold"),
-            bg=self.colors['pink'],
+            bg=self.colors['accent_secondary'],
             fg=self.colors['bg_primary'],
-            activebackground=self.colors['cyan'],
+            activebackground=self.colors['accent_primary'],
             activeforeground=self.colors['bg_primary'],
             relief="flat",
             bd=0,
@@ -639,7 +880,7 @@ class LooperApp:
     def setup_action_section(self, main_frame):
         """Setup the action buttons section"""
         # Action section with futuristic design
-        action_section = tk.Frame(main_frame, bg='#0a0a0f')
+        action_section = tk.Frame(main_frame, bg=self.colors['bg_primary'])
         action_section.pack(pady=(0, 15))
         
         # Main process button - vibrant and modern
@@ -648,11 +889,11 @@ class LooperApp:
             text="⚡ GENERATE PERFECT LOOPS ⚡",
             command=self.process_videos,
             font=("Consolas", 18, "bold"),
-            bg=self.colors['cyan'],
-            fg='#000000',
-            activebackground=self.colors['pink'],
-            activeforeground='#000000',
-            disabledforeground='#000000',
+            bg=self.colors['accent_primary'],
+            fg=self.colors['bg_primary'],
+            activebackground=self.colors['accent_secondary'],
+            activeforeground=self.colors['bg_primary'],
+            disabledforeground=self.colors['bg_primary'],
             relief="flat",
             bd=0,
             padx=60,
@@ -660,25 +901,25 @@ class LooperApp:
             state=tk.DISABLED,
             cursor="hand2"
         )
-        self.process_button.pack(pady=15)
+        self.process_button.pack(pady=20)
         
         # Enhanced hover effect with color transitions
         def on_button_enter(e):
             if self.process_button['state'] != 'disabled':
                 self.process_button.config(
-                    bg=self.colors['pink'],
-                    fg='#000000',
+                    bg=self.colors['accent_secondary'],
+                    fg=self.colors['bg_primary'],
                     relief="raised",
                     bd=3
                 )
                 # Add a subtle glow effect
-                self.process_button.config(highlightthickness=2, highlightbackground=self.colors['pink'])
+                self.process_button.config(highlightthickness=2, highlightbackground=self.colors['accent_secondary'])
         
         def on_button_leave(e):
             if self.process_button['state'] != 'disabled':
                 self.process_button.config(
-                    bg=self.colors['cyan'],
-                    fg='#000000',
+                    bg=self.colors['accent_primary'],
+                    fg=self.colors['bg_primary'],
                     relief="flat",
                     bd=0
                 )
@@ -748,7 +989,7 @@ class LooperApp:
             main_container,
             text="MP4 Quality",
             font=("Consolas", 14, "bold"),
-            fg=self.colors['cyan'],
+            fg=self.colors['accent_primary'],
             bg=self.colors['bg_primary']
         )
         title_label.pack(pady=(0, 15))
@@ -765,7 +1006,7 @@ class LooperApp:
             slider_inner,
             text="CRF:",
             font=("Consolas", 11, "bold"),
-            fg=self.colors['pink'],
+            fg=self.colors['accent_secondary'],
             bg=self.colors['bg_secondary']
         ).pack(side=tk.LEFT)
         
@@ -773,7 +1014,7 @@ class LooperApp:
             slider_inner,
             textvariable=self.quality_var,
             font=("Consolas", 11, "bold"),
-            fg=self.colors['cyan'],
+            fg=self.colors['accent_primary'],
             bg=self.colors['bg_secondary'],
             width=3
         ).pack(side=tk.RIGHT)
@@ -787,10 +1028,10 @@ class LooperApp:
             variable=self.quality_var,
             font=("Consolas", 9),
             bg=self.colors['bg_primary'],
-            fg=self.colors['white'],
+            fg=self.colors['text_primary'],
             highlightthickness=0,
             troughcolor=self.colors['bg_container'],
-            activebackground=self.colors['cyan'],
+            activebackground=self.colors['accent_primary'],
             sliderrelief="flat",
             sliderlength=15,
             length=250
@@ -805,7 +1046,7 @@ class LooperApp:
             indicators_frame,
             text="High Quality",
             font=("Consolas", 8),
-            fg=self.colors['cyan'],
+            fg=self.colors['accent_primary'],
             bg=self.colors['bg_primary']
         ).pack(side=tk.LEFT)
         
@@ -813,7 +1054,7 @@ class LooperApp:
             indicators_frame,
             text="Small File",
             font=("Consolas", 8),
-            fg=self.colors['gray'],
+            fg=self.colors['text_muted'],
             bg=self.colors['bg_primary']
         ).pack(side=tk.RIGHT)
         
@@ -823,9 +1064,9 @@ class LooperApp:
             text="Apply",
             command=quality_window.destroy,
             font=("Consolas", 10, "bold"),
-            bg=self.colors['cyan'],
+            bg=self.colors['accent_primary'],
             fg=self.colors['bg_primary'],
-            activebackground=self.colors['pink'],
+            activebackground=self.colors['accent_secondary'],
             activeforeground=self.colors['bg_primary'],
             relief="flat",
             padx=15,
@@ -837,74 +1078,83 @@ class LooperApp:
     def setup_progress_section(self, main_frame):
         """Setup the progress section"""
         # Progress section with futuristic design
-        progress_section = tk.Frame(main_frame, bg='#0a0a0f')
-        progress_section.pack(fill=tk.X, pady=(0, 15))
+        progress_section = tk.Frame(main_frame, bg=self.colors['bg_primary'])
+        progress_section.pack(fill=tk.X, pady=(0, 35))
         
         # Section header
         progress_header = tk.Label(
             progress_section,
             text="◦ PROCESSING STATUS",
             font=("Consolas", 14, "bold"),
-            fg='#00ffaa',
-            bg='#0a0a0f'
+            fg=self.colors['accent_primary'],
+            bg=self.colors['bg_primary']
         )
         progress_header.pack(anchor='w', pady=(0, 15))
         
         # Progress container
-        progress_container = tk.Frame(progress_section, bg='#112211', relief='solid', bd=1)
+        progress_container = tk.Frame(progress_section, bg=self.colors['bg_secondary'], relief='solid', bd=1)
         progress_container.pack(fill=tk.X, padx=5)
         
         # Inner container
-        progress_inner = tk.Frame(progress_container, bg='#112211')
+        progress_inner = tk.Frame(progress_container, bg=self.colors['bg_secondary'])
         progress_inner.pack(fill=tk.X, padx=20, pady=15)
         
         # Progress bar with ultra-modern styling
         self.progress_var = tk.DoubleVar()
-        progress_container = tk.Frame(progress_inner, bg=self.colors['bg_primary'], padx=2, pady=2)
+        progress_container = tk.Frame(progress_inner, bg=self.colors['bg_container'], padx=2, pady=2)
         progress_container.pack(fill=tk.X, pady=(0, 10))
         
-        self.progress_bar = ttk.Progressbar(
+        # Custom progress bar frame with border
+        self.progress_bar_frame = tk.Frame(progress_container, bg=self.colors['bg_primary'], height=24, relief='solid', bd=1)
+        self.progress_bar_frame.pack(fill=tk.X, padx=1, pady=1)
+        self.progress_bar_frame.pack_propagate(False)
+        
+        # Progress bar fill (will be updated dynamically)
+        self.progress_bar_fill = tk.Frame(self.progress_bar_frame, bg=self.colors['accent_primary'], width=0)
+        self.progress_bar_fill.pack(side=tk.LEFT, fill=tk.Y, padx=1, pady=1)
+        
+        # Progress percentage label
+        self.progress_label = tk.Label(
             progress_container,
-            variable=self.progress_var,
-            maximum=100,
-            length=500,
-            mode='determinate',
-            style='Futuristic.Horizontal.TProgressbar'
+            text="0%",
+            font=("Consolas", 10, "bold"),
+            fg=self.colors['accent_primary'],
+            bg=self.colors['bg_container']
         )
-        self.progress_bar.pack(fill=tk.X, padx=1, pady=1)
+        self.progress_label.pack(anchor='e', pady=(5, 0))
         
         # Status label with terminal styling
         self.status_label = tk.Label(
             progress_inner,
             text="◦ SYSTEM READY - AWAITING INPUT ◦",
-            font=("Consolas", 10),
-            fg='#44ffaa',
-            bg='#112211'
+            font=("Consolas", 11),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_secondary']
         )
-        self.status_label.pack()
+        self.status_label.pack(pady=(5, 0))
     
     def setup_recent_files_section(self, main_frame):
         """Setup the recent files section"""
         # Recent files section with futuristic design
-        recent_section = tk.Frame(main_frame, bg='#0a0a0f')
-        recent_section.pack(fill=tk.BOTH, expand=True)
+        recent_section = tk.Frame(main_frame, bg=self.colors['bg_primary'])
+        recent_section.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         # Section header
         recent_header = tk.Label(
             recent_section,
             text="◦ RECENT FILES",
             font=("Consolas", 14, "bold"),
-            fg='#00ffaa',
-            bg='#0a0a0f'
+            fg=self.colors['accent_primary'],
+            bg=self.colors['bg_primary']
         )
         recent_header.pack(anchor='w', pady=(0, 15))
         
         # Recent files container
-        recent_container = tk.Frame(recent_section, bg='#112222', relief='solid', bd=1)
+        recent_container = tk.Frame(recent_section, bg=self.colors['bg_secondary'], relief='solid', bd=1)
         recent_container.pack(fill=tk.BOTH, expand=True, padx=5)
         
         # Inner container
-        recent_inner = tk.Frame(recent_container, bg='#112222')
+        recent_inner = tk.Frame(recent_container, bg=self.colors['bg_secondary'])
         recent_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
         
         # Instructions
@@ -912,8 +1162,8 @@ class LooperApp:
             recent_inner,
             text="▸ DOUBLE-CLICK TO RELOAD",
             font=("Consolas", 9),
-            fg='#44ffaa',
-            bg='#112222'
+            fg=self.colors['accent_primary'],
+            bg=self.colors['bg_secondary']
         )
         recent_instruction.pack(anchor='w', pady=(0, 8))
         
@@ -921,10 +1171,10 @@ class LooperApp:
         self.recent_listbox = tk.Listbox(
             recent_inner,
             font=("Consolas", 10),
-            bg='#1a1a2a',
-            fg='#00ffaa',
-            selectbackground='#00ffaa',
-            selectforeground='#000000',
+            bg=self.colors['bg_container'],
+            fg=self.colors['accent_primary'],
+            selectbackground=self.colors['accent_primary'],
+            selectforeground=self.colors['bg_primary'],
             relief="flat",
             activestyle='none',
             highlightthickness=0
@@ -932,6 +1182,25 @@ class LooperApp:
         self.recent_listbox.pack(fill=tk.BOTH, expand=True)
         self.recent_listbox.bind('<Double-Button-1>', self.load_recent_file)
         
+    def select_files(self):
+        """Select one or multiple video files"""
+        file_paths = filedialog.askopenfilenames(
+            title="Select Video Files",
+            filetypes=[
+                ("Video files", "*.mp4 *.mov *.avi *.mkv"),
+                ("MP4 files", "*.mp4"),
+                ("MOV files", "*.mov"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if file_paths:
+            # Add to existing list instead of replacing
+            self.video_paths.extend(list(file_paths))
+            self.analyze_all_videos()
+            self.update_file_display()
+            self.process_button.config(state=tk.NORMAL)
+    
     def select_single_file(self):
         """Select a single video file"""
         file_path = filedialog.askopenfilename(
@@ -945,11 +1214,11 @@ class LooperApp:
         )
         
         if file_path:
-            self.video_paths = [file_path]
+            # Add to existing list instead of replacing
+            self.video_paths.append(file_path)
             self.analyze_all_videos()
             self.update_file_display()
             self.process_button.config(state=tk.NORMAL)
-            self.add_to_recent_files(file_path)
     
     def select_multiple_files(self):
         """Select multiple video files"""
@@ -964,13 +1233,12 @@ class LooperApp:
         )
         
         if file_paths:
-            self.video_paths = list(file_paths)
+            # Add to existing list instead of replacing
+            self.video_paths.extend(list(file_paths))
             self.analyze_all_videos()
             self.update_file_display()
             self.process_button.config(state=tk.NORMAL)
-            # Add all files to recent files
-            for file_path in file_paths:
-                self.add_to_recent_files(file_path)
+            # Recent files functionality removed
     
     def select_batch_folder(self):
         """Select a folder and process all video files in it"""
@@ -988,13 +1256,12 @@ class LooperApp:
                     video_files.append(os.path.join(folder_path, file))
             
             if video_files:
-                self.video_paths = sorted(video_files)  # Sort for consistent order
+                # Add to existing list instead of replacing
+                self.video_paths.extend(sorted(video_files))  # Sort for consistent order
                 self.analyze_all_videos()
                 self.update_file_display()
                 self.process_button.config(state=tk.NORMAL)
-                # Add all files to recent files
-                for file_path in video_files:
-                    self.add_to_recent_files(file_path)
+                # Recent files functionality removed
             else:
                 messagebox.showinfo("No Videos Found", f"No video files found in:\n{folder_path}")
     
@@ -1041,21 +1308,82 @@ class LooperApp:
     
     def update_file_display(self):
         """Update the file list display"""
-        # Clear the listbox
-        self.files_listbox.delete(0, tk.END)
+        # Clear existing file frames
+        for frame in self.file_frames:
+            frame.destroy()
+        self.file_frames.clear()
         
         if not self.video_infos:
-            self.file_summary_label.config(text="No valid video files selected")
+            self.file_summary_label.config(text="No files in queue")
             return
         
-        # Add files to listbox
+        # Add files as individual rows
         total_size = 0
         total_duration = 0
         
         for i, video_info in enumerate(self.video_infos):
-            # Format: "filename (duration, size)"
-            display_text = f"{video_info['filename']} ({video_info['duration']:.1f}s, {video_info['file_size_mb']:.1f}MB)"
-            self.files_listbox.insert(tk.END, display_text)
+            # Create a frame for this file row
+            file_frame = tk.Frame(self.files_container, bg=self.colors['bg_container'])
+            file_frame.pack(fill=tk.X, pady=1, padx=0)  # No horizontal padding
+            
+            # File info with better alignment
+            filename = video_info['filename']  # Show full filename
+            resolution = f"{video_info['width']}x{video_info['height']}"
+            duration = f"{video_info['duration']:.1f}s"
+            fps = f"{video_info['fps']:.1f}fps"
+            
+            # Filename label (left side)
+            filename_label = tk.Label(
+                file_frame,
+                text=filename,
+                font=("Consolas", 9, "bold"),
+                bg=self.colors['bg_container'],
+                fg=self.colors['accent_primary'],
+                anchor='w'
+            )
+            filename_label.pack(side=tk.LEFT, padx=(5, 0))
+            
+            # Spacer to push resolution/duration to the right
+            spacer = tk.Frame(file_frame, bg=self.colors['bg_container'])
+            spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            # Remove button (right side, most right aligned)
+            remove_btn = tk.Button(
+                file_frame,
+                text="✕",
+                command=lambda idx=i: self.remove_file_by_index(idx),
+                font=("Consolas", 8, "bold"),
+                bg=self.colors['accent_secondary'],
+                fg=self.colors['bg_primary'],
+                activebackground=self.colors['accent_primary'],
+                activeforeground=self.colors['bg_primary'],
+                relief="flat",
+                padx=4,
+                pady=0,
+                cursor="hand2",
+                bd=0,
+                width=2
+            )
+            
+            # Add hover effects
+            remove_btn.bind('<Enter>', lambda e, btn=remove_btn: self.on_remove_button_hover(btn, True))
+            remove_btn.bind('<Leave>', lambda e, btn=remove_btn: self.on_remove_button_hover(btn, False))
+            
+            remove_btn.pack(side=tk.RIGHT, padx=(0, 0))  # No padding - truly rightmost
+
+            # Resolution, duration, and FPS (to the left of the X)
+            info_text = f"{resolution} | {duration} | {fps}"
+            info_label = tk.Label(
+                file_frame,
+                text=info_text,
+                font=("Consolas", 9, "bold"),
+                bg=self.colors['bg_container'],
+                fg=self.colors['text_primary'],  # White color
+                anchor='e'
+            )
+            info_label.pack(side=tk.RIGHT, padx=(0, 8))  # Small space before X button
+            
+            self.file_frames.append(file_frame)
             
             total_size += video_info['file_size_mb']
             total_duration += video_info['duration']
@@ -1161,8 +1489,9 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 
                 # Update status for current file
                 current_file = video_info['filename']
-                self.update_status(f"Processing {i+1}/{total_files}: {current_file}", 
-                                 (i / total_files) * 100)
+                file_progress = (i / total_files) * 100
+                self.update_status(f"📁 Processing {i+1}/{total_files}: {current_file}", 
+                                 file_progress)
                 
                 # Process this video
                 success = self.process_single_video(
@@ -1177,7 +1506,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                     failed_files.append(current_file)
             
             # Show completion summary
-            self.update_status("BATCH PROCESSING COMPLETE", 100)
+            self.update_status("🎉 BATCH PROCESSING COMPLETE!", 100)
             
             summary_message = f"Batch Processing Complete!\n\n"
             summary_message += f"✓ Successfully processed: {len(successful_files)} files\n"
@@ -1188,7 +1517,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             messagebox.showinfo("Batch Complete", summary_message)
             
         except Exception as e:
-            self.update_status(f"Batch processing error: {str(e)}", 0)
+            self.update_status(f"❌ Batch processing error: {str(e)}", 0)
             messagebox.showerror("Error", f"Batch processing failed: {str(e)}")
         finally:
             self.is_processing = False
@@ -1432,6 +1761,10 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     def try_complex_filter_for_file(self, input_path, output_path, overlap_frames, total_frames, output_format, fps=30):
         """Try the complex filter method for a specific file"""
         try:
+            # Set current video info for progress tracking
+            self.current_video_duration = total_frames / fps
+            self.current_video_frames = total_frames
+            
             # Build ffmpeg command for crossfade loop
             ffmpeg_cmd = [
                 'ffmpeg', '-y',  # Overwrite output
@@ -1468,15 +1801,29 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             
             # Monitor progress and capture error output
             stderr_output = []
+            last_progress = 0
+            
             while True:
                 output = process.stderr.readline()
                 if output == '' and process.poll() is not None:
                     break
                 if output:
                     stderr_output.append(output)
-                    # Parse progress from ffmpeg output
-                    if 'time=' in output:
-                        self.update_status("Rendering loop...", 70)
+                    
+                    # Parse actual progress from FFmpeg output
+                    progress = self.parse_ffmpeg_progress(output)
+                    if progress is not None and progress > last_progress:
+                        last_progress = progress
+                        self.update_status(f"🎬 Rendering perfect loop... {progress:.1f}%", progress)
+                    elif 'time=' in output and progress is None:
+                        # Fallback status updates
+                        if 'frame=' in output:
+                            self.update_status("🎬 Processing frames...", 30)
+                        elif 'speed=' in output:
+                            self.update_status("🚀 Encoding video...", 60)
+            
+            # Set to 100% when complete
+            self.update_status("✅ Loop rendering complete!", 100)
             
             return_code = process.poll()
             if return_code != 0:
@@ -1490,6 +1837,10 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     def try_simple_loop_for_file(self, input_path, output_path, duration, output_format):
         """Try a simpler method for a specific file"""
         try:
+            # Set current video info for progress tracking
+            self.current_video_duration = duration * 2  # Double duration for loop
+            self.current_video_frames = int(duration * 2 * 30)  # Estimate frames
+            
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
                 '-i', input_path,
@@ -1511,14 +1862,29 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             
             # Monitor progress and capture error output
             stderr_output = []
+            last_progress = 0
+            
             while True:
                 output = process.stderr.readline()
                 if output == '' and process.poll() is not None:
                     break
                 if output:
                     stderr_output.append(output)
-                    if 'time=' in output:
-                        self.update_status("Processing simple loop...", 50)
+                    
+                    # Parse actual progress from FFmpeg output
+                    progress = self.parse_ffmpeg_progress(output)
+                    if progress is not None and progress > last_progress:
+                        last_progress = progress
+                        self.update_status(f"🎬 Processing simple loop... {progress:.1f}%", progress)
+                    elif 'time=' in output and progress is None:
+                        # Fallback status updates
+                        if 'frame=' in output:
+                            self.update_status("🎬 Processing frames...", 30)
+                        elif 'speed=' in output:
+                            self.update_status("🚀 Encoding video...", 60)
+            
+            # Set to 100% when complete
+            self.update_status("✅ Simple loop complete!", 100)
             
             return_code = process.poll()
             if return_code != 0:
@@ -1532,6 +1898,18 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     def try_basic_copy_for_file(self, input_path, output_path, output_format):
         """Try basic copy for a specific file"""
         try:
+            # Get video duration for progress tracking
+            cap = cv2.VideoCapture(input_path)
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                self.current_video_duration = frame_count / fps if fps > 0 else 0
+                self.current_video_frames = frame_count
+                cap.release()
+            else:
+                self.current_video_duration = 0
+                self.current_video_frames = 0
+            
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
                 '-i', input_path,
@@ -1551,18 +1929,29 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             
             # Monitor progress and capture error output
             stderr_output = []
+            last_progress = 0
+            
             while True:
                 output = process.stderr.readline()
                 if output == '' and process.poll() is not None:
                     break
                 if output:
                     stderr_output.append(output)
-                    if 'time=' in output:
-                        self.update_status("📋 Copying video...", 30)
-                    elif 'frame=' in output:
-                        self.update_status("🎬 Processing frames...", 20)
-                    elif 'speed=' in output:
-                        self.update_status("🚀 Encoding video...", 40)
+                    
+                    # Parse actual progress from FFmpeg output
+                    progress = self.parse_ffmpeg_progress(output)
+                    if progress is not None and progress > last_progress:
+                        last_progress = progress
+                        self.update_status(f"📋 Copying video... {progress:.1f}%", progress)
+                    elif 'time=' in output and progress is None:
+                        # Fallback status updates
+                        if 'frame=' in output:
+                            self.update_status("🎬 Processing frames...", 20)
+                        elif 'speed=' in output:
+                            self.update_status("🚀 Encoding video...", 40)
+            
+            # Set to 100% when complete
+            self.update_status("✅ Basic copy complete!", 100)
             
             return_code = process.poll()
             if return_code != 0:
@@ -1578,8 +1967,54 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         def update():
             self.status_label.config(text=message)
             self.progress_var.set(progress)
+            
+            # Update custom progress bar
+            if hasattr(self, 'progress_bar_fill') and hasattr(self, 'progress_label'):
+                # Calculate width based on progress percentage
+                total_width = self.progress_bar_frame.winfo_width()
+                if total_width > 0:
+                    fill_width = int((progress / 100.0) * total_width)
+                    self.progress_bar_fill.config(width=fill_width)
+                
+                # Update percentage label
+                self.progress_label.config(text=f"{progress:.1f}%")
+            
             self.root.update_idletasks()
         self.root.after(0, update)
+    
+    def parse_ffmpeg_progress(self, line):
+        """Parse FFmpeg progress output and return progress percentage"""
+        try:
+            # Look for time progress: time=00:00:15.00
+            time_match = re.search(r'time=(\d{2}):(\d{2}):(\d{2}\.\d{2})', line)
+            if time_match and self.current_video_duration > 0:
+                hours = int(time_match.group(1))
+                minutes = int(time_match.group(2))
+                seconds = float(time_match.group(3))
+                current_time = hours * 3600 + minutes * 60 + seconds
+                progress = min(95, (current_time / self.current_video_duration) * 100)
+                return progress
+            
+            # Look for frame progress: frame= 1234
+            frame_match = re.search(r'frame=\s*(\d+)', line)
+            if frame_match and hasattr(self, 'current_video_frames') and self.current_video_frames > 0:
+                current_frame = int(frame_match.group(1))
+                progress = min(95, (current_frame / self.current_video_frames) * 100)
+                return progress
+                
+        except Exception as e:
+            print(f"Error parsing FFmpeg progress: {e}")
+        
+        return None
+    
+    def on_window_resize(self, event):
+        """Handle window resize to update progress bar"""
+        if hasattr(self, 'progress_bar_fill') and hasattr(self, 'progress_var'):
+            progress = self.progress_var.get()
+            total_width = self.progress_bar_frame.winfo_width()
+            if total_width > 0:
+                fill_width = int((progress / 100.0) * total_width)
+                self.progress_bar_fill.config(width=fill_width)
     
     def load_settings(self):
         try:
@@ -1590,7 +2025,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                     self.overlap_mode.set(settings.get('overlap_mode', 'seconds'))
                     self.format_var.set(settings.get('output_format', 'HAP'))
                     self.quality_var.set(settings.get('quality_crf', 18))
-                    self.load_recent_files_list(settings.get('recent_files', []))
+                    # Recent files functionality removed
                     
                     # Update UI based on loaded settings
                     if self.overlap_mode.get() == "frames":
@@ -1605,7 +2040,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             'overlap_mode': self.overlap_mode.get(),
             'output_format': self.format_var.get(),
             'quality_crf': self.quality_var.get(),
-            'recent_files': self.get_recent_files_list()
+            'recent_files': []  # Recent files functionality removed
         }
         
         try:
@@ -1654,6 +2089,57 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         except:
             return []
     
+    def remove_file_by_index(self, index):
+        """Remove file by index"""
+        if 0 <= index < len(self.video_infos):
+            # Remove from both lists
+            del self.video_infos[index]
+            del self.video_paths[index]
+            
+            # Update display
+            self.update_file_display()
+            
+            # Disable process button if no files left
+            if not self.video_infos:
+                self.process_button.config(state=tk.DISABLED)
+    
+    def on_remove_button_hover(self, button, entering):
+        """Handle hover effects for remove buttons"""
+        if entering:
+            button.config(bg=self.colors['accent_primary'])
+        else:
+            button.config(bg=self.colors['accent_secondary'])
+    
+    def on_file_double_click(self, event):
+        """Handle double-click on file list to remove files"""
+        selection = self.files_listbox.curselection()
+        if selection and selection[0] < len(self.video_infos):
+            # Remove from both lists
+            del self.video_infos[selection[0]]
+            del self.video_paths[selection[0]]
+            
+            # Update display
+            self.update_file_display()
+            
+            # Disable process button if no files left
+            if not self.video_infos:
+                self.process_button.config(state=tk.DISABLED)
+    
+    def remove_selected_file(self):
+        """Remove selected file from queue"""
+        selection = self.files_listbox.curselection()
+        if selection and selection[0] < len(self.video_infos):
+            # Remove from both lists
+            del self.video_infos[selection[0]]
+            del self.video_paths[selection[0]]
+            
+            # Update display
+            self.update_file_display()
+            
+            # Disable process button if no files left
+            if not self.video_infos:
+                self.process_button.config(state=tk.DISABLED)
+    
     def load_recent_file(self, event):
         selection = self.recent_listbox.curselection()
         if selection:
@@ -1670,9 +2156,62 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                             self.process_button.config(state=tk.NORMAL)
             except:
                 pass
+    
+    def parse_ffmpeg_progress(self, line):
+        """Parse FFmpeg progress output and return progress percentage"""
+        try:
+            # Look for time progress: time=00:00:15.00
+            time_match = re.search(r'time=(\d{2}):(\d{2}):(\d{2}\.\d{2})', line)
+            if time_match and self.current_video_duration > 0:
+                hours = int(time_match.group(1))
+                minutes = int(time_match.group(2))
+                seconds = float(time_match.group(3))
+                current_time = hours * 3600 + minutes * 60 + seconds
+                progress = min(95, (current_time / self.current_video_duration) * 100)
+                return progress
+            
+            # Look for frame progress: frame= 1234
+            frame_match = re.search(r'frame=\s*(\d+)', line)
+            if frame_match and hasattr(self, 'current_video_frames') and self.current_video_frames > 0:
+                current_frame = int(frame_match.group(1))
+                progress = min(95, (current_frame / self.current_video_frames) * 100)
+                return progress
+                
+        except Exception as e:
+            print(f"Error parsing FFmpeg progress: {e}")
+        
+        return None
+    
+    def update_status(self, message, progress):
+        """Update status with thread-safe GUI updates"""
+        def update():
+            self.status_label.config(text=message)
+            self.progress_var.set(progress)
+            
+            # Update custom progress bar
+            if hasattr(self, 'progress_bar_fill') and hasattr(self, 'progress_label'):
+                # Calculate width based on progress percentage
+                total_width = self.progress_bar_frame.winfo_width()
+                if total_width > 0:
+                    fill_width = int((progress / 100.0) * total_width)
+                    self.progress_bar_fill.config(width=fill_width)
+                
+                # Update percentage label
+                self.progress_label.config(text=f"{progress:.1f}%")
+            
+            self.root.update_idletasks()
+        self.root.after(0, update)
 
 def main():
-    root = tk.Tk()
+    # Try to use tkinterdnd2 for better drag and drop support
+    try:
+        import tkinterdnd2 as tkdnd
+        root = tkdnd.TkinterDnD.Tk()
+        print("✓ Using tkinterdnd2 for drag and drop support")
+    except ImportError:
+        root = tk.Tk()
+        print("⚠️ Using standard Tkinter (limited drag and drop)")
+    
     app = LooperApp(root)
     
     # Save settings on close
