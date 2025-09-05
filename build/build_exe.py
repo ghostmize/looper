@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import shutil
+import tempfile
 
 def install_pyinstaller():
     """Install PyInstaller if not already installed"""
@@ -25,19 +26,50 @@ def install_pyinstaller():
             print("✗ Failed to install PyInstaller")
             return False
 
-def create_spec_file():
+def create_clean_build_environment():
+    """Create a clean build environment with only necessary files"""
+    print("Creating clean build environment...")
+    
+    # Create temporary directory
+    temp_dir = tempfile.mkdtemp(prefix='looper_build_')
+    print(f"✓ Created temporary build directory: {temp_dir}")
+    
+    # Copy source files
+    src_dir = os.path.join(temp_dir, 'src')
+    os.makedirs(src_dir, exist_ok=True)
+    shutil.copy2('../src/looper.py', src_dir)
+    shutil.copy2('../src/launch_looper.py', src_dir)
+    print("✓ Copied source files")
+    
+    # Copy assets
+    assets_dir = os.path.join(temp_dir, 'assets')
+    shutil.copytree('../assets', assets_dir)
+    print("✓ Copied assets")
+    
+    return temp_dir
+
+def create_spec_file(build_dir):
     """Create a custom .spec file for better control over the build"""
-    spec_content = '''# -*- mode: python ; coding: utf-8 -*-
+    looper_py = os.path.join(build_dir, 'src', 'looper.py')
+    src_path = os.path.join(build_dir, 'src')
+    logo_png = os.path.join(build_dir, 'assets', 'logos', 'looper_logo.png')
+    icon_ico = os.path.join(build_dir, 'assets', 'icons', 'looper_icon.ico')
+    logo_small = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_small.png')
+    logo_tiny = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_tiny.png')
+    
+    spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
 a = Analysis(
-    ['looper.py'],
-    pathex=[],
+    ['{looper_py}'],
+    pathex=['{src_path}'],
     binaries=[],
     datas=[
-        ('looper_logo.png', '.'),
-        ('looper_icon.ico', '.')
+        ('{logo_png}', '.'),
+        ('{icon_ico}', '.'),
+        ('{logo_small}', '.'),
+        ('{logo_tiny}', '.')
     ],
     hiddenimports=[
         'tkinter',
@@ -51,7 +83,7 @@ a = Analysis(
         'PIL.ImageTk'
     ],
     hookspath=[],
-    hooksconfig={},
+    hooksconfig={{}},
     runtime_hooks=[],
     excludes=[
         'matplotlib',
@@ -61,7 +93,11 @@ a = Analysis(
         'notebook',
         'IPython',
         'pytest',
-        'setuptools'
+        'setuptools',
+        'git',
+        'gitdb',
+        'smmap',
+        'GitPython'
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -91,7 +127,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='looper_icon.ico',  # Cool loop icon
+    icon='{icon_ico}',  # Cool loop icon
     version_info=None
 )
 '''
@@ -101,11 +137,15 @@ exe = EXE(
     
     print("✓ Created custom .spec file")
 
-def build_executable():
+def build_executable(build_dir):
     """Build the executable using PyInstaller"""
     print("Building executable...")
     
     try:
+        # Change to build directory to avoid scanning the main project
+        original_cwd = os.getcwd()
+        os.chdir(build_dir)
+        
         # Use the custom spec file
         cmd = [
             sys.executable, "-m", "PyInstaller",
@@ -118,6 +158,12 @@ def build_executable():
         
         if result.returncode == 0:
             print("✓ Executable built successfully!")
+            # Copy executable back to original location
+            exe_src = os.path.join(build_dir, 'dist', 'Looper_v0.9_by_Ghosteam.exe')
+            exe_dst = os.path.join(original_cwd, 'dist', 'Looper_v0.9_by_Ghosteam.exe')
+            os.makedirs(os.path.dirname(exe_dst), exist_ok=True)
+            shutil.copy2(exe_src, exe_dst)
+            print(f"✓ Executable copied to: {exe_dst}")
             return True
         else:
             print("✗ Build failed:")
@@ -127,15 +173,23 @@ def build_executable():
     except Exception as e:
         print(f"✗ Build error: {e}")
         return False
+    finally:
+        # Always return to original directory
+        os.chdir(original_cwd)
 
-def cleanup_build_files():
+def cleanup_build_files(build_dir):
     """Clean up temporary build files"""
     print("Cleaning up build files...")
     
-    # Remove build directory
+    # Remove temporary build directory
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+        print("✓ Removed temporary build directory")
+    
+    # Remove local build directory
     if os.path.exists('build'):
         shutil.rmtree('build')
-        print("✓ Removed build directory")
+        print("✓ Removed local build directory")
     
     # Remove spec file
     if os.path.exists('looper.spec'):
@@ -151,21 +205,28 @@ def main():
     print("by Ghosteam")
     print("=" * 50)
     
-    # Check if looper.py exists
-    if not os.path.exists('looper.py'):
-        print("✗ looper.py not found in current directory")
+    # Check if looper.py exists in src directory
+    if not os.path.exists('../src/looper.py'):
+        print("✗ looper.py not found in src directory")
         return False
     
     # Install PyInstaller
     if not install_pyinstaller():
         return False
     
-    # Create spec file
-    create_spec_file()
+    # Create clean build environment
+    build_dir = create_clean_build_environment()
     
-    # Build executable
-    if not build_executable():
-        return False
+    try:
+        # Create spec file
+        create_spec_file(build_dir)
+        
+        # Build executable
+        if not build_executable(build_dir):
+            return False
+    finally:
+        # Clean up temporary files
+        cleanup_build_files(build_dir)
     
     # Check if executable was created
     exe_path = os.path.join('dist', 'Looper_v0.9_by_Ghosteam.exe')
@@ -174,8 +235,7 @@ def main():
         print(f"✓ Executable created: {exe_path}")
         print(f"✓ File size: {file_size:.1f} MB")
         
-        # Cleanup
-        cleanup_build_files()
+        # Cleanup already done in try/finally block
         
         print("\n" + "=" * 50)
         print("BUILD COMPLETE!")

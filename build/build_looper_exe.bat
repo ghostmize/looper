@@ -16,6 +16,7 @@ if errorlevel 1 (
 
 echo.
 echo Building portable executable...
+cd /d "%~dp0"
 python build_exe.py
 
 echo.
