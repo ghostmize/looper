@@ -34,3 +34,5 @@ Thumbs.db
 *.tmp
 *.temp
 temp_*
+dist/*.exe
+dist/*.exe
