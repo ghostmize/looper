@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
+import sys
 import subprocess
 import threading
 import json
@@ -12,11 +13,23 @@ import tempfile
 import shutil
 import re
 
+def resource_path(relpath: str) -> str:
+    """Get absolute path to resource, works for dev and PyInstaller one-file builds"""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
+    return os.path.join(base, relpath)
+
 class LooperApp:
     def __init__(self, root):
         self.root = root
         self.root.title("◉ LOOPER v0.9 - Perfect Video Loops")
         self.root.geometry("950x950")
+        
+        # Optional: give the app a stable AppUserModelID so taskbar uses this icon
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Ghosteam.Looper')
+        except Exception:
+            pass
         
         # Unified color scheme - modern dark theme (cyan + magenta only)
         self.colors = {
@@ -37,11 +50,16 @@ class LooperApp:
         self.root.resizable(True, True)
         self.root.minsize(800, 850)
         
-        # Set window icon if available
+        # Set window icon using resource_path for PyInstaller compatibility
         try:
-            if os.path.exists('..\\assets\\icons\\looper_icon.ico'):
-                self.root.iconbitmap('..\\assets\\icons\\looper_icon.ico')
-        except:
+            icon_path = resource_path('looper_icon.ico')
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+                print(f"✅ Loaded window icon from: {icon_path}")
+            else:
+                print(f"⚠️ Icon not found at: {icon_path}")
+        except Exception as e:
+            print(f"⚠️ Could not load window icon: {e}")
             pass
         
         # Video file info - now supports multiple files
@@ -196,8 +214,10 @@ class LooperApp:
         try:
             from PIL import Image, ImageTk
             
-            if os.path.exists('looper_logo.png'):
-                logo_img = Image.open('looper_logo.png')
+            # Use resource_path for PyInstaller compatibility
+            logo_path = resource_path('looper_logo.png')
+            if os.path.exists(logo_path):
+                logo_img = Image.open(logo_path)
                 # Resize to 40x40 for the UI
                 logo_img = logo_img.resize((40, 40), Image.Resampling.LANCZOS)
                 self.logo_photo = ImageTk.PhotoImage(logo_img)
@@ -208,7 +228,7 @@ class LooperApp:
                     bg=self.colors['bg_primary']
                 )
                 logo_label.pack(side=tk.LEFT)
-                print("✅ Loaded high-quality logo")
+                print(f"✅ Loaded high-quality logo from: {logo_path}")
                 return True
                     
         except Exception as e:
