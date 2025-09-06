@@ -50,12 +50,12 @@ def create_clean_build_environment():
 
 def create_spec_file(build_dir):
     """Create a custom .spec file for better control over the build"""
-    looper_py = os.path.join(build_dir, 'src', 'looper.py')
-    src_path = os.path.join(build_dir, 'src')
-    logo_png = os.path.join(build_dir, 'assets', 'logos', 'looper_logo.png')
-    icon_ico = os.path.join(build_dir, 'assets', 'icons', 'looper_icon.ico')
-    logo_small = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_small.png')
-    logo_tiny = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_tiny.png')
+    looper_py = os.path.join(build_dir, 'src', 'looper.py').replace('\\', '/')
+    src_path = os.path.join(build_dir, 'src').replace('\\', '/')
+    logo_png = os.path.join(build_dir, 'assets', 'logos', 'looper_logo.png').replace('\\', '/')
+    icon_ico = os.path.join(build_dir, 'assets', 'icons', 'looper_icon.ico').replace('\\', '/')
+    logo_small = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_small.png').replace('\\', '/')
+    logo_tiny = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_tiny.png').replace('\\', '/')
     
     spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
 
@@ -132,12 +132,14 @@ exe = EXE(
 )
 '''
     
-    with open('looper.spec', 'w') as f:
+    spec_file_path = os.path.join(build_dir, 'looper.spec')
+    with open(spec_file_path, 'w') as f:
         f.write(spec_content)
     
     print("✓ Created custom .spec file")
+    return spec_file_path
 
-def build_executable(build_dir):
+def build_executable(build_dir, spec_file_path):
     """Build the executable using PyInstaller"""
     print("Building executable...")
     
@@ -151,7 +153,7 @@ def build_executable(build_dir):
             sys.executable, "-m", "PyInstaller",
             "--clean",
             "--noconfirm",
-            "looper.spec"
+            spec_file_path
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -219,10 +221,10 @@ def main():
     
     try:
         # Create spec file
-        create_spec_file(build_dir)
+        spec_file_path = create_spec_file(build_dir)
         
         # Build executable
-        if not build_executable(build_dir):
+        if not build_executable(build_dir, spec_file_path):
             return False
     finally:
         # Clean up temporary files
