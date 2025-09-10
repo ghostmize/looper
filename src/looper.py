@@ -15,8 +15,26 @@ import re
 
 def resource_path(relpath: str) -> str:
     """Get absolute path to resource, works for dev and PyInstaller one-file builds"""
-    base = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
-    return os.path.join(base, relpath)
+    if getattr(sys, '_MEIPASS', None):
+        # PyInstaller one-file build - files are in the temp directory
+        base = sys._MEIPASS
+        return os.path.join(base, relpath)
+    else:
+        # Development mode - files are in the assets directory relative to project root
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if relpath == 'looper_icon.ico':
+            return os.path.join(project_root, 'assets', 'icons', 'looper_icon.ico')
+        elif relpath == 'looper_logo.png':
+            return os.path.join(project_root, 'assets', 'logos', 'looper_logo.png')
+        else:
+            return os.path.join(project_root, relpath)
+
+# Optional: stable taskbar identity so Windows ties the window to your EXE icon
+try:
+    import ctypes
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Ghosteam.Looper.0.9')
+except Exception:
+    pass
 
 class LooperApp:
     def __init__(self, root):
@@ -52,15 +70,11 @@ class LooperApp:
         
         # Set window icon using resource_path for PyInstaller compatibility
         try:
-            icon_path = resource_path('looper_icon.ico')
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
-                print(f"✅ Loaded window icon from: {icon_path}")
-            else:
-                print(f"⚠️ Icon not found at: {icon_path}")
+            ico = resource_path('looper_icon.ico')
+            print('Icon path:', ico, os.path.exists(ico))
+            self.root.iconbitmap(ico)
         except Exception as e:
-            print(f"⚠️ Could not load window icon: {e}")
-            pass
+            print('⚠️ Could not load window icon:', e)
         
         # Video file info - now supports multiple files
         self.video_paths = []  # List of video file paths
@@ -487,9 +501,10 @@ class LooperApp:
         )
         list_header.pack(anchor='w', pady=(15, 8))
         
-        # Files listbox with futuristic styling
-        listbox_container = tk.Frame(file_inner, bg=self.colors['bg_container'], relief='solid', bd=1)
-        listbox_container.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        # Files listbox with futuristic styling - reduced height
+        listbox_container = tk.Frame(file_inner, bg=self.colors['bg_container'], relief='solid', bd=1, height=120)
+        listbox_container.pack(fill=tk.X, pady=(0, 15))  # Changed from BOTH to X, added fixed height
+        listbox_container.pack_propagate(False)  # Prevent height from expanding
         
         # Listbox with scrollbar
         listbox_frame = tk.Frame(listbox_container, bg=self.colors['bg_container'])
@@ -499,9 +514,51 @@ class LooperApp:
         listbox_left = tk.Frame(listbox_frame, bg=self.colors['bg_container'])
         listbox_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
+        # Create a scrollable frame for the files
+        self.canvas = tk.Canvas(listbox_left, bg=self.colors['bg_container'], highlightthickness=0, bd=0, relief='flat')
+        self.scrollbar = tk.Scrollbar(listbox_left, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=self.colors['bg_container'], bd=0, relief='flat')
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        # make the inner frame stretch to canvas width
+        self.canvas_window = self.canvas.create_window((0, 0),
+                                                       window=self.scrollable_frame,
+                                                       anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        def _stretch_inner(event):
+            # keep inner frame same width as the visible canvas
+            self.canvas.itemconfig(self.canvas_window, width=self.canvas.winfo_width())
+        
+        self.canvas.bind("<Configure>", _stretch_inner)
+        
+        # Pack canvas and scrollbar
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+        
+        # make wheel scroll work when hovering the queue
+        def _focus_queue(_):
+            self.canvas.focus_set()
+            # On Windows/macOS, wheel events go to the focused widget
+            self.canvas.bind_all('<MouseWheel>', self._on_mousewheel)
+
+        def _unfocus_queue(_):
+            self.canvas.unbind_all('<MouseWheel>')
+
+        listbox_container.bind('<Enter>', _focus_queue)
+        listbox_container.bind('<Leave>', _unfocus_queue)
+
+        # Linux support (trackpad/wheel sends Button-4/5)
+        listbox_container.bind('<Button-4>', lambda e: self.canvas.yview_scroll(-1, 'units'))
+        listbox_container.bind('<Button-5>', lambda e: self.canvas.yview_scroll(1, 'units'))
+        
         # Create a frame for each file row instead of a listbox
-        self.files_container = tk.Frame(listbox_left, bg=self.colors['bg_container'])
-        self.files_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)  # No padding
+        self.files_container = tk.Frame(self.scrollable_frame, bg=self.colors['bg_container'], bd=0, relief='flat')
+        self.files_container.pack(fill=tk.X, padx=0, pady=0)  # Changed from BOTH to X to prevent vertical expansion
         
         # We'll create individual file frames dynamically
         self.file_frames = []
@@ -519,6 +576,15 @@ class LooperApp:
             bg=self.colors['bg_secondary']
         )
         self.file_summary_label.pack(anchor='w')
+    
+    def _on_mousewheel(self, event):
+        """Handle mouse wheel scrolling for the file list"""
+        # macOS sends small deltas; Windows is multiples of 120
+        if sys.platform == 'darwin':
+            step = -1 if event.delta > 0 else 1
+        else:
+            step = int(-event.delta / 120)
+        self.canvas.yview_scroll(step, 'units')
     
     def setup_drag_drop(self, widget):
         """Setup drag and drop functionality for a widget"""
@@ -1344,7 +1410,7 @@ class LooperApp:
         for i, video_info in enumerate(self.video_infos):
             # Create a frame for this file row
             file_frame = tk.Frame(self.files_container, bg=self.colors['bg_container'])
-            file_frame.pack(fill=tk.X, pady=1, padx=0)  # No horizontal padding
+            file_frame.pack(fill=tk.X, pady=1)
             
             # File info with better alignment
             filename = video_info['filename']  # Show full filename
@@ -1352,7 +1418,7 @@ class LooperApp:
             duration = f"{video_info['duration']:.1f}s"
             fps = f"{video_info['fps']:.1f}fps"
             
-            # Filename label (left side)
+            # Filename (left)
             filename_label = tk.Label(
                 file_frame,
                 text=filename,
@@ -1361,47 +1427,65 @@ class LooperApp:
                 fg=self.colors['accent_primary'],
                 anchor='w'
             )
-            filename_label.pack(side=tk.LEFT, padx=(5, 0))
+            filename_label.grid(row=0, column=0, sticky="w", padx=(5, 0))
             
-            # Spacer to push resolution/duration to the right
-            spacer = tk.Frame(file_frame, bg=self.colors['bg_container'])
-            spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # Resolution
+            res_label = tk.Label(
+                file_frame, 
+                text=resolution, 
+                font=("Consolas", 9),
+                bg=self.colors['bg_container'], 
+                fg=self.colors['text_primary']
+            )
+            res_label.grid(row=0, column=1, sticky="e", padx=(10, 5))
             
-            # Remove button (right side, most right aligned)
+            # Duration
+            dur_label = tk.Label(
+                file_frame, 
+                text=duration, 
+                font=("Consolas", 9),
+                bg=self.colors['bg_container'], 
+                fg=self.colors['text_primary']
+            )
+            dur_label.grid(row=0, column=2, sticky="e", padx=(10, 5))
+            
+            # FPS
+            fps_label = tk.Label(
+                file_frame, 
+                text=fps, 
+                font=("Consolas", 9),
+                bg=self.colors['bg_container'], 
+                fg=self.colors['text_primary']
+            )
+            fps_label.grid(row=0, column=3, sticky="e", padx=(10, 5))
+            
+            # Remove button (far right)
             remove_btn = tk.Button(
-                file_frame,
+                file_frame, 
                 text="✕",
                 command=lambda idx=i: self.remove_file_by_index(idx),
                 font=("Consolas", 8, "bold"),
-                bg=self.colors['accent_secondary'],
+                bg=self.colors['accent_secondary'], 
                 fg=self.colors['bg_primary'],
                 activebackground=self.colors['accent_primary'],
                 activeforeground=self.colors['bg_primary'],
-                relief="flat",
-                padx=4,
-                pady=0,
-                cursor="hand2",
-                bd=0,
-                width=2
+                relief="flat", 
+                cursor="hand2", 
+                width=2,
+                bd=0
             )
+            remove_btn.grid(row=0, column=4, sticky="e", padx=(5, 5))
             
             # Add hover effects
             remove_btn.bind('<Enter>', lambda e, btn=remove_btn: self.on_remove_button_hover(btn, True))
             remove_btn.bind('<Leave>', lambda e, btn=remove_btn: self.on_remove_button_hover(btn, False))
             
-            remove_btn.pack(side=tk.RIGHT, padx=(0, 0))  # No padding - truly rightmost
-
-            # Resolution, duration, and FPS (to the left of the X)
-            info_text = f"{resolution} | {duration} | {fps}"
-            info_label = tk.Label(
-                file_frame,
-                text=info_text,
-                font=("Consolas", 9, "bold"),
-                bg=self.colors['bg_container'],
-                fg=self.colors['text_primary'],  # White color
-                anchor='e'
-            )
-            info_label.pack(side=tk.RIGHT, padx=(0, 8))  # Small space before X button
+            # Configure grid to push columns right
+            file_frame.grid_columnconfigure(0, weight=1)  # filename expands
+            file_frame.grid_columnconfigure(1, minsize=110)  # resolution
+            file_frame.grid_columnconfigure(2, minsize=75)   # length
+            file_frame.grid_columnconfigure(3, minsize=75)   # fps
+            file_frame.grid_columnconfigure(4, minsize=28)   # ✕ button
             
             self.file_frames.append(file_frame)
             
@@ -1611,8 +1695,14 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         trim_start = total_duration - overlap_duration  # Start X seconds before end
         output_duration = total_duration - overlap_duration  # Shorter final length
         
-        # Correct filter following your exact steps:
-        filter_str = f"[0:v]trim=0:{output_duration},setpts=PTS-STARTPTS[base];[0:v]trim={trim_start}:{total_duration},setpts=PTS-STARTPTS,fade=t=out:st=0:d={overlap_duration}:alpha=1[overlay];[base][overlay]overlay[outv]"
+        # Correct filter following your exact steps with fixes:
+        # 1. Force exact frame alignment with fps filter
+        # 2. Clamp fade fully to zero with color=black
+        # 3. Shorten fade by 1 frame to ensure complete fade out
+        frame_duration = 1.0 / fps
+        fade_duration = overlap_duration - frame_duration
+        
+        filter_str = f"[0:v]fps={fps},trim=0:{output_duration},setpts=PTS-STARTPTS[base];[0:v]fps={fps},trim={trim_start}:{total_duration},setpts=PTS-STARTPTS,fade=t=out:st=0:d={fade_duration}:alpha=1:color=black[overlay];[base][overlay]overlay,format=yuv420p[outv]"
         
         return filter_str
     
@@ -1640,7 +1730,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             # Monitor progress and capture error output
@@ -1693,7 +1784,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             stderr_output = []
@@ -1740,7 +1832,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             stderr_output = []
@@ -1816,7 +1909,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             # Monitor progress and capture error output
@@ -1877,7 +1971,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             # Monitor progress and capture error output
@@ -1944,7 +2039,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             # Monitor progress and capture error output

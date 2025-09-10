@@ -8,7 +8,7 @@ from PIL import Image
 from pathlib import Path
 
 def main():
-    SIZES = [32, 48, 64, 128, 256]
+    SIZES = [256, 128, 64, 48, 32, 16]  # Optimal order for Windows (largest first)
     base = Path(__file__).parent.parent / "logos"
     
     imgs = []

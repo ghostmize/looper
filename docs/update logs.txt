@@ -1,0 +1,2 @@
+fixed queue scroll area getting too long
+fixed last transparent frame with uneven fps

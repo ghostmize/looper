@@ -1,7 +1,7 @@
 {
-  "overlap_time": 2.0,
+  "overlap_time": 1.0,
   "overlap_mode": "seconds",
-  "output_format": "HAP",
+  "output_format": "MP4",
   "quality_crf": 12,
   "recent_files": []
 }

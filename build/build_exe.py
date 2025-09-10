@@ -69,8 +69,6 @@ def create_spec_file(build_dir):
     src_path = os.path.join(build_dir, 'src').replace('\\', '/')
     logo_png = os.path.join(build_dir, 'assets', 'logos', 'looper_logo.png').replace('\\', '/')
     icon_ico = os.path.join(build_dir, 'assets', 'icons', 'looper_icon.ico').replace('\\', '/')
-    logo_small = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_small.png').replace('\\', '/')
-    logo_tiny = os.path.join(build_dir, 'assets', 'logos', 'looper_logo_tiny.png').replace('\\', '/')
     
     spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
 
@@ -82,9 +80,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('{logo_png}', '.'),
-        ('{icon_ico}', '.'),
-        ('{logo_small}', '.'),
-        ('{logo_tiny}', '.')
+        ('{icon_ico}', '.')
     ],
     hiddenimports=[
         'tkinter',
