@@ -92,7 +92,8 @@ pip install -r requirements_build.txt
 ### Antivirus False Positives
 - Some antivirus software may flag PyInstaller executables
 - Add the `dist/` folder to antivirus exclusions during build
-- Consider code signing for distribution (requires certificate)
+- **Code signing is the best solution** - see `CODE_SIGNING_GUIDE.md` for details
+- Use `build_exe_with_signing.py` for code-signed builds
 
 ## 📊 Expected Results
 

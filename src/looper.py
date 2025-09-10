@@ -12,6 +12,8 @@ from datetime import datetime
 import tempfile
 import shutil
 import re
+import shutil
+from shutil import which
 
 def resource_path(relpath: str) -> str:
     """Get absolute path to resource, works for dev and PyInstaller one-file builds"""
@@ -86,8 +88,16 @@ class LooperApp:
         self.is_processing = False
         self.current_video_duration = 0  # For progress calculation
         
+        # FFmpeg detection state
+        self.ffmpeg_available = False
+        self.ffmpeg_status_label = None
+        self.ffmpeg_install_prompt_shown = False  # Prevent infinite prompts
+        
         self.setup_ui()
         self.load_settings()
+        
+        # Check FFmpeg availability at startup
+        self.root.after(100, self.check_ffmpeg_installation)
         
         # Check initial format after settings are loaded
         self.root.after(100, self.check_initial_format)
@@ -114,6 +124,16 @@ class LooperApp:
         # Minimal title with icon
         title_container = tk.Frame(left_header, bg=self.colors['bg_primary'])
         title_container.pack(side=tk.LEFT)
+        
+        # Small FFmpeg status indicator on the left
+        self.ffmpeg_status_label = tk.Label(
+            left_header,
+            text="🔍 Checking...",
+            font=("Consolas", 8),
+            fg=self.colors['text_muted'],
+            bg=self.colors['bg_primary']
+        )
+        self.ffmpeg_status_label.pack(side=tk.LEFT, padx=(20, 0))
         
         # Simple loop icon (minimal)
         self.setup_logo(title_container)
@@ -436,6 +456,189 @@ class LooperApp:
         x = (about_window.winfo_screenwidth() // 2) - (about_window.winfo_width() // 2)
         y = (about_window.winfo_screenheight() // 2) - (about_window.winfo_height() // 2)
         about_window.geometry(f"+{x}+{y}")
+    
+    
+    def check_ffmpeg_installation(self):
+        """Check if FFmpeg is installed and available"""
+        try:
+            print("🔍 Checking FFmpeg installation...")
+            
+            # Try to find FFmpeg in PATH
+            ffmpeg_path = which('ffmpeg')
+            if ffmpeg_path:
+                # Test if FFmpeg actually works
+                try:
+                    result = subprocess.run(
+                        ['ffmpeg', '-version'],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                    )
+                    if result.returncode == 0:
+                        self.ffmpeg_available = True
+                        self.update_ffmpeg_status("FFmpeg Installed", self.colors['text_primary'])
+                        self.ffmpeg_install_prompt_shown = False  # Reset flag when FFmpeg is found
+                        print("✅ FFmpeg is installed and working")
+                        return True
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                    pass
+            
+            # FFmpeg not found or not working
+            self.ffmpeg_available = False
+            self.update_ffmpeg_status("FFmpeg Missing", self.colors['error'])
+            print("❌ FFmpeg not found or not working")
+            
+            # Show installation prompt when FFmpeg is missing (only once)
+            if not self.ffmpeg_install_prompt_shown:
+                self.ffmpeg_install_prompt_shown = True
+                self.root.after(1000, self.show_ffmpeg_installation_prompt)
+            return False
+            
+        except Exception as e:
+            print(f"Error checking FFmpeg: {e}")
+            self.ffmpeg_available = False
+            self.update_ffmpeg_status("FFmpeg Missing", self.colors['error'])
+            
+            # Show installation prompt when FFmpeg check fails (only once)
+            if not self.ffmpeg_install_prompt_shown:
+                self.ffmpeg_install_prompt_shown = True
+                self.root.after(1000, self.show_ffmpeg_installation_prompt)
+            return False
+    
+    def update_ffmpeg_status(self, text, color):
+        """Update FFmpeg status label with minimalistic text"""
+        if self.ffmpeg_status_label:
+            # Make the text more minimalistic
+            if "FFmpeg Installed" in text:
+                display_text = "✓ FFmpeg"
+            elif "FFmpeg Missing" in text:
+                display_text = "✗ FFmpeg"
+            elif "Installing" in text:
+                display_text = "⏳ Installing..."
+            elif "Installation Failed" in text:
+                display_text = "✗ Install Failed"
+            elif "Installation Timeout" in text:
+                display_text = "⏰ Timeout"
+            elif "Installation Error" in text:
+                display_text = "✗ Error"
+            elif "Checking" in text:
+                display_text = "🔍 Checking..."
+            else:
+                display_text = text
+            
+            self.ffmpeg_status_label.config(text=display_text, fg=color)
+    
+    def install_ffmpeg_via_winget(self):
+        """Install FFmpeg using winget"""
+        try:
+            print("🚀 Installing FFmpeg via winget...")
+            self.update_ffmpeg_status("Installing FFmpeg...", self.colors['accent_primary'])
+            
+            # Run winget install command
+            cmd = [
+                'winget', 'install', 'Gyan.FFmpeg',
+                '--accept-package-agreements',
+                '--accept-source-agreements',
+                '--silent'
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            
+            if result.returncode == 0:
+                print("✅ FFmpeg installed successfully")
+                self.update_ffmpeg_status("FFmpeg Installed", self.colors['text_primary'])
+                self.ffmpeg_available = True
+                
+                # Show success message and restart prompt
+                messagebox.showinfo(
+                    "Installation Complete",
+                    "FFmpeg has been installed successfully!\n\n"
+                    "IMPORTANT: Please close and restart LOOPER completely\n"
+                    "to use the newly installed FFmpeg.\n\n"
+                    "The current session cannot detect the new installation."
+                )
+                return True
+            else:
+                print(f"❌ FFmpeg installation failed: {result.stderr}")
+                self.update_ffmpeg_status("Installation Failed", self.colors['error'])
+                messagebox.showerror(
+                    "Installation Failed",
+                    f"Failed to install FFmpeg:\n{result.stderr}\n\n"
+                    "Please install FFmpeg manually from:\n"
+                    "https://ffmpeg.org/download.html"
+                )
+                return False
+                
+        except subprocess.TimeoutExpired:
+            print("❌ FFmpeg installation timed out")
+            self.update_ffmpeg_status("Installation Timeout", self.colors['error'])
+            messagebox.showerror(
+                "Installation Timeout",
+                "FFmpeg installation timed out.\n\n"
+                "Please try again or install manually from:\n"
+                "https://ffmpeg.org/download.html"
+            )
+            return False
+        except Exception as e:
+            print(f"❌ Error installing FFmpeg: {e}")
+            self.update_ffmpeg_status("Installation Error", self.colors['error'])
+            messagebox.showerror(
+                "Installation Error",
+                f"Error installing FFmpeg: {str(e)}\n\n"
+                "Please install FFmpeg manually from:\n"
+                "https://ffmpeg.org/download.html"
+            )
+            return False
+    
+    def show_ffmpeg_installation_prompt(self):
+        """Show prompt to install FFmpeg"""
+        result = messagebox.askyesno(
+            "FFmpeg Required",
+            "FFmpeg is required to use LOOPER.\n\n"
+            "Should it install now?\n\n"
+            "This will use Windows Package Manager (winget) to install FFmpeg automatically."
+        )
+        
+        if result:
+            # Show installation progress
+            self.update_ffmpeg_status("Installing FFmpeg...", self.colors['accent_primary'])
+            
+            # Run installation in a separate thread to avoid blocking UI
+            def install_thread():
+                success = self.install_ffmpeg_via_winget()
+                if success:
+                    # Don't re-check FFmpeg availability - user needs to restart
+                    # The re-check would fail anyway since PATH isn't updated in current process
+                    pass
+            
+            thread = threading.Thread(target=install_thread)
+            thread.daemon = True
+            thread.start()
+        else:
+            # Show manual installation instructions
+            messagebox.showinfo(
+                "Manual Installation",
+                "To install FFmpeg manually:\n\n"
+                "1. Download from: https://ffmpeg.org/download.html\n"
+                "2. Extract to a folder (e.g., C:\\ffmpeg)\n"
+                "3. Add the 'bin' folder to your system PATH\n"
+                "4. Restart LOOPER\n\n"
+                "Alternatively, you can use winget:\n"
+                "winget install Gyan.FFmpeg"
+            )
+    
+    def normalize_path(self, path):
+        """Normalize path separators to use forward slashes consistently"""
+        if path:
+            return path.replace('\\', '/')
+        return path
     
     def setup_file_section(self, main_frame):
         """Setup the file selection section"""
@@ -1553,6 +1756,11 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         if not self.video_paths or self.is_processing:
             return
         
+        # Check FFmpeg availability before processing
+        if not self.ffmpeg_available:
+            self.show_ffmpeg_installation_prompt()
+            return
+        
         # Ask for output directory (same for single and multiple files)
         output_dir = filedialog.askdirectory(
             title="Select Output Directory for Looped Videos"
@@ -1561,7 +1769,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         if not output_dir:
             return
         
-        # Generate output paths for all files
+        # Generate output paths for all files with normalized paths
         self.output_paths = []
         for video_info in self.video_infos:
             base_name = os.path.splitext(video_info['filename'])[0]
@@ -1570,6 +1778,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 extension = ".mov"  # HAP uses .mov extension
             
             output_path = os.path.join(output_dir, f"{base_name}_LOOPER{extension}")
+            # Normalize path separators
+            output_path = self.normalize_path(output_path)
             self.output_paths.append(output_path)
         
         self.current_processing_index = 0
@@ -1630,6 +1840,13 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     def process_single_video(self, video_info, output_path, output_format):
         """Process a single video file"""
         try:
+            # Normalize input and output paths
+            input_path = self.normalize_path(video_info['path'])
+            output_path = self.normalize_path(output_path)
+            
+            print(f"Processing video: {input_path}")
+            print(f"Output path: {output_path}")
+            
             overlap_time = self.overlap_var.get()
             
             # Calculate overlap frames based on mode
@@ -1642,19 +1859,19 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             
             # Try the complex filter first
             success = self.try_complex_filter_for_file(
-                video_info['path'], output_path, overlap_frames, total_frames, output_format, video_info['fps']
+                input_path, output_path, overlap_frames, total_frames, output_format, video_info['fps']
             )
             
             if not success:
                 # Fallback to simple loop
                 success = self.try_simple_loop_for_file(
-                    video_info['path'], output_path, video_info['duration'], output_format
+                    input_path, output_path, video_info['duration'], output_format
                 )
                 
             if not success:
                 # Final fallback - just copy the video as-is
                 success = self.try_basic_copy_for_file(
-                    video_info['path'], output_path, output_format
+                    input_path, output_path, output_format
                 )
             
             return success
@@ -1904,6 +2121,12 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             print("FFmpeg command:", ' '.join(ffmpeg_cmd))
             print("=" * 60)
             
+            # Log FFmpeg detection results
+            print(f"FFmpeg available: {self.ffmpeg_available}")
+            if not self.ffmpeg_available:
+                print("ERROR: FFmpeg not available - this should not happen!")
+                return False
+            
             # Execute ffmpeg command
             process = subprocess.Popen(
                 ffmpeg_cmd,
@@ -1942,6 +2165,9 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             return_code = process.poll()
             if return_code != 0:
                 print("Complex filter stderr:", '\n'.join(stderr_output))
+                # Log actual FFmpeg errors for debugging
+                error_output = '\n'.join(stderr_output)
+                print(f"FFmpeg error details: {error_output}")
             return return_code == 0
             
         except Exception as e:
@@ -2004,6 +2230,9 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             return_code = process.poll()
             if return_code != 0:
                 print("Simple loop stderr:", '\n'.join(stderr_output))
+                # Log actual FFmpeg errors for debugging
+                error_output = '\n'.join(stderr_output)
+                print(f"FFmpeg error details: {error_output}")
             return return_code == 0
             
         except Exception as e:
@@ -2072,6 +2301,9 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             return_code = process.poll()
             if return_code != 0:
                 print("Basic copy stderr:", '\n'.join(stderr_output))
+                # Log actual FFmpeg errors for debugging
+                error_output = '\n'.join(stderr_output)
+                print(f"FFmpeg error details: {error_output}")
             return return_code == 0
             
         except Exception as e:

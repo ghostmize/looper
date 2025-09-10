@@ -53,22 +53,73 @@ def get_log_file_path():
         print(f"Warning: Cannot write to exe directory {exe_dir}, using temp directory")
         return os.path.join(tempfile.gettempdir(), 'looper_ffmpeg_error.log')
 
-def log_ffmpeg_error(ffmpeg_cmd, stderr_output, log_file_path):
+def log_ffmpeg_error(ffmpeg_cmd, stderr_output, stdout_output, return_code, log_file_path):
     """Log FFmpeg error details to a file and return the log file path"""
     try:
-        with open(log_file_path, 'w', encoding='utf-8') as log_file:
-            log_file.write("=" * 80 + "\n")
-            log_file.write("LOOPER FFMPEG ERROR LOG\n")
-            log_file.write("=" * 80 + "\n")
-            log_file.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        # Check if file exists to determine if we should append or create new
+        file_exists = os.path.exists(log_file_path)
+        
+        with open(log_file_path, 'a' if file_exists else 'w', encoding='utf-8') as log_file:
+            if not file_exists:
+                log_file.write("=" * 80 + "\n")
+                log_file.write("LOOPER FFMPEG ERROR LOG\n")
+                log_file.write("=" * 80 + "\n")
+            
+            log_file.write(f"\nTimestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            log_file.write(f"Return Code: {return_code}\n")
             log_file.write(f"Command: {' '.join(ffmpeg_cmd)}\n")
             log_file.write("=" * 80 + "\n")
-            log_file.write("STDERR OUTPUT:\n")
-            log_file.write("=" * 80 + "\n")
-            log_file.write('\n'.join(stderr_output))
-            log_file.write("\n" + "=" * 80 + "\n")
+            
+            if stdout_output:
+                log_file.write("STDOUT OUTPUT:\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write('\n'.join(stdout_output))
+                log_file.write("\n" + "=" * 80 + "\n")
+            
+            if stderr_output:
+                log_file.write("STDERR OUTPUT:\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write('\n'.join(stderr_output))
+                log_file.write("\n" + "=" * 80 + "\n")
+            else:
+                log_file.write("NO STDERR OUTPUT CAPTURED\n")
+                log_file.write("=" * 80 + "\n")
+                
     except Exception as e:
         print(f"Error writing to log file: {e}")
+    
+    return log_file_path
+
+def log_comprehensive_error(error_type, error_message, error_details=None, log_file_path=None):
+    """Log any type of error (Python exceptions, file errors, etc.) to the log file"""
+    try:
+        if log_file_path is None:
+            log_file_path = get_log_file_path()
+        
+        # Check if file exists to determine if we should append or create new
+        file_exists = os.path.exists(log_file_path)
+        
+        with open(log_file_path, 'a' if file_exists else 'w', encoding='utf-8') as log_file:
+            if not file_exists:
+                log_file.write("=" * 80 + "\n")
+                log_file.write("LOOPER COMPREHENSIVE ERROR LOG\n")
+                log_file.write("=" * 80 + "\n")
+            
+            log_file.write(f"\nTimestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            log_file.write(f"Error Type: {error_type}\n")
+            log_file.write(f"Error Message: {error_message}\n")
+            
+            if error_details:
+                log_file.write("=" * 80 + "\n")
+                log_file.write("ERROR DETAILS:\n")
+                log_file.write("=" * 80 + "\n")
+                log_file.write(str(error_details))
+                log_file.write("\n" + "=" * 80 + "\n")
+            else:
+                log_file.write("=" * 80 + "\n")
+                
+    except Exception as e:
+        print(f"Error writing comprehensive error to log file: {e}")
     
     return log_file_path
 
@@ -1573,7 +1624,14 @@ class LooperApp:
             cap.release()
             
         except Exception as e:
-            messagebox.showerror("Error", f"Could not analyze video: {str(e)}")
+            error_msg = f"Could not analyze video: {str(e)}"
+            print(error_msg)
+            log_comprehensive_error("VIDEO_ANALYSIS_ERROR", error_msg, {
+                'video_path': self.video_path,
+                'file_exists': os.path.exists(self.video_path) if self.video_path else False,
+                'file_readable': os.access(self.video_path, os.R_OK) if self.video_path else False
+            })
+            messagebox.showerror("Error", error_msg)
     
     def update_file_info(self):
         if not self.video_info:
@@ -1593,31 +1651,56 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     
     def process_videos(self):
         """Process all selected videos"""
-        if not self.video_paths or self.is_processing:
-            return
-        
-        # Ask for output directory (same for single and multiple files)
-        output_dir = filedialog.askdirectory(
-            title="Select Output Directory for Looped Videos"
-        )
-        
-        if not output_dir:
-            return
-        
-        # Generate output paths for all files
-        self.output_paths = []
-        for video_info in self.video_infos:
-            base_name = os.path.splitext(video_info['filename'])[0]
-            extension = f".{self.format_var.get().lower()}"
-            if self.format_var.get() == "HAP":
-                extension = ".mov"  # HAP uses .mov extension
+        try:
+            if not self.video_paths or self.is_processing:
+                return
             
-            output_path = os.path.join(output_dir, f"{base_name}_LOOPER{extension}")
-            self.output_paths.append(output_path)
-        
-        self.current_processing_index = 0
-        self.is_processing = True
-        self.process_button.config(state=tk.DISABLED)
+            # Ask for output directory (same for single and multiple files)
+            output_dir = filedialog.askdirectory(
+                title="Select Output Directory for Looped Videos"
+            )
+            
+            if not output_dir:
+                return
+            
+            # Generate output paths for all files
+            self.output_paths = []
+            for video_info in self.video_infos:
+                try:
+                    base_name = os.path.splitext(video_info['filename'])[0]
+                    extension = f".{self.format_var.get().lower()}"
+                    if self.format_var.get() == "HAP":
+                        extension = ".mov"  # HAP uses .mov extension
+                    
+                    output_path = os.path.join(output_dir, f"{base_name}_LOOPER{extension}")
+                    # Normalize path separators to use forward slashes for FFmpeg compatibility
+                    output_path = output_path.replace('\\', '/')
+                    self.output_paths.append(output_path)
+                    
+                except Exception as e:
+                    error_msg = f"Error generating output path for {video_info.get('filename', 'unknown')}: {str(e)}"
+                    print(error_msg)
+                    log_comprehensive_error("OUTPUT_PATH_ERROR", error_msg, {
+                        'video_info': video_info,
+                        'output_dir': output_dir,
+                        'format': self.format_var.get()
+                    })
+                    messagebox.showerror("Error", error_msg)
+                    return
+            
+            self.current_processing_index = 0
+            self.is_processing = True
+            self.process_button.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            error_msg = f"Error in process_videos: {str(e)}"
+            print(error_msg)
+            log_comprehensive_error("PROCESS_VIDEOS_ERROR", error_msg, {
+                'video_paths': self.video_paths,
+                'is_processing': self.is_processing,
+                'video_infos': self.video_infos
+            })
+            messagebox.showerror("Error", f"Failed to start video processing:\n{error_msg}")
         
         # Start processing in separate thread
         thread = threading.Thread(target=self.process_videos_thread)
@@ -1721,60 +1804,147 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     def process_single_video(self, video_info, output_path, output_format):
         """Process a single video file"""
         try:
+            # Normalize input path for FFmpeg compatibility
+            input_path = video_info['path'].replace('\\', '/')
+            
+            # Normalize output path for FFmpeg compatibility (ensure consistency)
+            output_path = output_path.replace('\\', '/')
+            
             # Create a debug log to track processing
             try:
                 log_file_path = get_log_file_path()
+                # Always start fresh for each processing attempt
                 with open(log_file_path, 'w', encoding='utf-8') as log_file:
                     log_file.write("=" * 80 + "\n")
                     log_file.write("LOOPER PROCESSING DEBUG LOG\n")
                     log_file.write("=" * 80 + "\n")
                     log_file.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     log_file.write(f"Starting processing of: {video_info['filename']}\n")
-                    log_file.write(f"Input path: {video_info['path']}\n")
+                    log_file.write(f"Input path: {input_path}\n")
                     log_file.write(f"Output path: {output_path}\n")
                     log_file.write(f"Output format: {output_format}\n")
                     log_file.write("=" * 80 + "\n")
             except Exception as log_error:
                 print(f"Could not create debug log: {log_error}")
+                log_comprehensive_error("DEBUG_LOG_ERROR", f"Could not create debug log: {log_error}")
+            
+            # Validate input file exists and is readable
+            try:
+                if not os.path.exists(input_path):
+                    raise FileNotFoundError(f"Input file does not exist: {input_path}")
+                if not os.access(input_path, os.R_OK):
+                    raise PermissionError(f"Cannot read input file: {input_path}")
+            except Exception as e:
+                error_msg = f"Input file validation failed: {str(e)}"
+                print(error_msg)
+                log_comprehensive_error("INPUT_FILE_VALIDATION_ERROR", error_msg, {
+                    'input_path': input_path,
+                    'file_exists': os.path.exists(input_path) if 'input_path' in locals() else 'unknown',
+                    'file_readable': os.access(input_path, os.R_OK) if 'input_path' in locals() else 'unknown'
+                })
+                return False
+            
+            # Validate output directory is writable
+            try:
+                output_dir = os.path.dirname(output_path)
+                if not os.path.exists(output_dir):
+                    raise FileNotFoundError(f"Output directory does not exist: {output_dir}")
+                if not os.access(output_dir, os.W_OK):
+                    raise PermissionError(f"Cannot write to output directory: {output_dir}")
+            except Exception as e:
+                error_msg = f"Output directory validation failed: {str(e)}"
+                print(error_msg)
+                log_comprehensive_error("OUTPUT_DIR_VALIDATION_ERROR", error_msg, {
+                    'output_path': output_path,
+                    'output_dir': output_dir if 'output_dir' in locals() else 'unknown',
+                    'dir_exists': os.path.exists(output_dir) if 'output_dir' in locals() else 'unknown',
+                    'dir_writable': os.access(output_dir, os.W_OK) if 'output_dir' in locals() else 'unknown'
+                })
+                return False
             
             overlap_time = self.overlap_var.get()
             
             # Calculate overlap frames based on mode
-            if self.overlap_mode.get() == "seconds":
-                overlap_frames = int(overlap_time * video_info['fps'])
-            else:
-                # User input is already in frames
-                overlap_frames = int(overlap_time)
-            total_frames = video_info['frame_count']
+            try:
+                if self.overlap_mode.get() == "seconds":
+                    overlap_frames = int(overlap_time * video_info['fps'])
+                else:
+                    # User input is already in frames
+                    overlap_frames = int(overlap_time)
+                total_frames = video_info['frame_count']
+            except Exception as e:
+                error_msg = f"Error calculating overlap frames: {str(e)}"
+                print(error_msg)
+                log_comprehensive_error("OVERLAP_CALCULATION_ERROR", error_msg, {
+                    'overlap_time': overlap_time,
+                    'overlap_mode': self.overlap_mode.get(),
+                    'video_fps': video_info.get('fps'),
+                    'video_frame_count': video_info.get('frame_count')
+                })
+                return False
             
             # Try the complex filter first
-            success = self.try_complex_filter_for_file(
-                video_info['path'], output_path, overlap_frames, total_frames, output_format, video_info['fps']
-            )
+            try:
+                success = self.try_complex_filter_for_file(
+                    input_path, output_path, overlap_frames, total_frames, output_format, video_info['fps']
+                )
+            except Exception as e:
+                error_msg = f"Error in complex filter processing: {str(e)}"
+                print(error_msg)
+                log_comprehensive_error("COMPLEX_FILTER_ERROR", error_msg, {
+                    'input_path': input_path,
+                    'output_path': output_path,
+                    'overlap_frames': overlap_frames,
+                    'total_frames': total_frames,
+                    'output_format': output_format,
+                    'fps': video_info['fps']
+                })
+                success = False
             
             if not success:
                 # Fallback to simple loop
-                success = self.try_simple_loop_for_file(
-                    video_info['path'], output_path, video_info['duration'], output_format
-                )
+                try:
+                    success = self.try_simple_loop_for_file(
+                        input_path, output_path, video_info['duration'], output_format
+                    )
+                except Exception as e:
+                    error_msg = f"Error in simple loop processing: {str(e)}"
+                    print(error_msg)
+                    log_comprehensive_error("SIMPLE_LOOP_ERROR", error_msg, {
+                        'input_path': input_path,
+                        'output_path': output_path,
+                        'duration': video_info['duration'],
+                        'output_format': output_format
+                    })
+                    success = False
                 
             if not success:
                 # Final fallback - just copy the video as-is
-                success = self.try_basic_copy_for_file(
-                    video_info['path'], output_path, output_format
-                )
+                try:
+                    success = self.try_basic_copy_for_file(
+                        input_path, output_path, output_format
+                    )
+                except Exception as e:
+                    error_msg = f"Error in basic copy processing: {str(e)}"
+                    print(error_msg)
+                    log_comprehensive_error("BASIC_COPY_ERROR", error_msg, {
+                        'input_path': input_path,
+                        'output_path': output_path,
+                        'output_format': output_format
+                    })
+                    success = False
             
-            # If all methods failed, create a comprehensive failure log
+            # If all methods failed, append comprehensive failure summary to existing log
             if not success:
                 try:
                     log_file_path = get_log_file_path()
-                    with open(log_file_path, 'w', encoding='utf-8') as log_file:
-                        log_file.write("=" * 80 + "\n")
-                        log_file.write("LOOPER COMPREHENSIVE FAILURE LOG\n")
+                    with open(log_file_path, 'a', encoding='utf-8') as log_file:
+                        log_file.write("\n" + "=" * 80 + "\n")
+                        log_file.write("COMPREHENSIVE FAILURE SUMMARY\n")
                         log_file.write("=" * 80 + "\n")
                         log_file.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                         log_file.write(f"File: {video_info['filename']}\n")
-                        log_file.write(f"Input path: {video_info['path']}\n")
+                        log_file.write(f"Input path: {input_path}\n")
                         log_file.write(f"Output path: {output_path}\n")
                         log_file.write(f"Output format: {output_format}\n")
                         log_file.write(f"Overlap frames: {overlap_frames}\n")
@@ -1786,14 +1956,12 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                         log_file.write("1. Complex filter method - FAILED\n")
                         log_file.write("2. Simple loop method - FAILED\n")
                         log_file.write("3. Basic copy method - FAILED\n")
-                        log_file.write("\nThis indicates a fundamental issue with:\n")
-                        log_file.write("- FFmpeg installation/availability\n")
-                        log_file.write("- File permissions\n")
-                        log_file.write("- Input file format/corruption\n")
-                        log_file.write("- System resources\n")
+                        log_file.write("\nNOTE: Check the FFmpeg error messages above for the actual cause.\n")
+                        log_file.write("If no FFmpeg errors are shown above, the subprocess may have failed silently.\n")
                         log_file.write("=" * 80 + "\n")
                 except Exception as log_error:
                     print(f"Could not write comprehensive failure log: {log_error}")
+                    log_comprehensive_error("COMPREHENSIVE_FAILURE_LOG_ERROR", f"Could not write comprehensive failure log: {log_error}")
             
             return success
                 
@@ -1886,34 +2054,44 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
-            # Monitor progress and capture error output
+            # Monitor progress and capture both stdout and stderr
+            stdout_output = []
             stderr_output = []
             while True:
-                output = process.stderr.readline()
-                if output == '' and process.poll() is not None:
+                stdout_line = process.stdout.readline()
+                stderr_line = process.stderr.readline()
+                
+                if stdout_line == '' and stderr_line == '' and process.poll() is not None:
                     break
-                if output:
-                    stderr_output.append(output)
+                
+                if stdout_line:
+                    stdout_output.append(stdout_line.strip())
+                
+                if stderr_line:
+                    stderr_output.append(stderr_line.strip())
                     # Parse progress from ffmpeg output
-                    if 'time=' in output:
+                    if 'time=' in stderr_line:
                         self.update_status("⚡ Rendering perfect loop...", 70)
-                    elif 'frame=' in output:
+                    elif 'frame=' in stderr_line:
                         self.update_status("🎬 Processing frames...", 50)
-                    elif 'speed=' in output:
+                    elif 'speed=' in stderr_line:
                         self.update_status("🚀 Encoding video...", 80)
             
             return_code = process.poll()
             if return_code != 0:
                 # Create error log file
                 log_file_path = get_log_file_path()
-                log_ffmpeg_error(ffmpeg_cmd, stderr_output, log_file_path)
+                log_ffmpeg_error(ffmpeg_cmd, stderr_output, stdout_output, return_code, log_file_path)
                 
                 # Show user-friendly popup with log file path
                 messagebox.showerror(
                     "FFmpeg Error", 
-                    f"Command failed. Error details saved to:\n{log_file_path}"
+                    f"Command failed (return code: {return_code}). Error details saved to:\n{log_file_path}"
                 )
+                print(f"Complex filter failed with return code {return_code}")
                 print("Complex filter stderr:", '\n'.join(stderr_output))
+                if stdout_output:
+                    print("Complex filter stdout:", '\n'.join(stdout_output))
             return return_code == 0
             
         except Exception as e:
@@ -1949,32 +2127,42 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
+            stdout_output = []
             stderr_output = []
             while True:
-                output = process.stderr.readline()
-                if output == '' and process.poll() is not None:
+                stdout_line = process.stdout.readline()
+                stderr_line = process.stderr.readline()
+                
+                if stdout_line == '' and stderr_line == '' and process.poll() is not None:
                     break
-                if output:
-                    stderr_output.append(output)
-                    if 'time=' in output:
+                
+                if stdout_line:
+                    stdout_output.append(stdout_line.strip())
+                
+                if stderr_line:
+                    stderr_output.append(stderr_line.strip())
+                    if 'time=' in stderr_line:
                         self.update_status("⚡ Rendering simple loop...", 80)
-                    elif 'frame=' in output:
+                    elif 'frame=' in stderr_line:
                         self.update_status("🎬 Processing frames...", 60)
-                    elif 'speed=' in output:
+                    elif 'speed=' in stderr_line:
                         self.update_status("🚀 Encoding video...", 90)
             
             return_code = process.poll()
             if return_code != 0:
                 # Create error log file
                 log_file_path = get_log_file_path()
-                log_ffmpeg_error(ffmpeg_cmd, stderr_output, log_file_path)
+                log_ffmpeg_error(ffmpeg_cmd, stderr_output, stdout_output, return_code, log_file_path)
                 
                 # Show user-friendly popup with log file path
                 messagebox.showerror(
                     "FFmpeg Error", 
-                    f"Command failed. Error details saved to:\n{log_file_path}"
+                    f"Command failed (return code: {return_code}). Error details saved to:\n{log_file_path}"
                 )
+                print(f"Simple loop failed with return code {return_code}")
                 print("Simple loop stderr:", '\n'.join(stderr_output))
+                if stdout_output:
+                    print("Simple loop stdout:", '\n'.join(stdout_output))
             return return_code == 0
             
         except Exception as e:
@@ -2006,28 +2194,38 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
+            stdout_output = []
             stderr_output = []
             while True:
-                output = process.stderr.readline()
-                if output == '' and process.poll() is not None:
+                stdout_line = process.stdout.readline()
+                stderr_line = process.stderr.readline()
+                
+                if stdout_line == '' and stderr_line == '' and process.poll() is not None:
                     break
-                if output:
-                    stderr_output.append(output)
-                    if 'time=' in output:
+                
+                if stdout_line:
+                    stdout_output.append(stdout_line.strip())
+                
+                if stderr_line:
+                    stderr_output.append(stderr_line.strip())
+                    if 'time=' in stderr_line:
                         self.update_status("Copying video...", 90)
             
             return_code = process.poll()
             if return_code != 0:
                 # Create error log file
                 log_file_path = get_log_file_path()
-                log_ffmpeg_error(ffmpeg_cmd, stderr_output, log_file_path)
+                log_ffmpeg_error(ffmpeg_cmd, stderr_output, stdout_output, return_code, log_file_path)
                 
                 # Show user-friendly popup with log file path
                 messagebox.showerror(
                     "FFmpeg Error", 
-                    f"Command failed. Error details saved to:\n{log_file_path}"
+                    f"Command failed (return code: {return_code}). Error details saved to:\n{log_file_path}"
                 )
+                print(f"Basic copy failed with return code {return_code}")
                 print("Basic copy stderr:", '\n'.join(stderr_output))
+                if stdout_output:
+                    print("Basic copy stdout:", '\n'.join(stdout_output))
             return return_code == 0
             
         except Exception as e:
