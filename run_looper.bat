@@ -1,5 +1,5 @@
 @echo off
-echo Looper - Perfect Video Loops v0.9
+echo Looper - Perfect Video Loops v0.91
 echo =================================
 echo.
 

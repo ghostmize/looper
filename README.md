@@ -1,4 +1,4 @@
-# Looper - Perfect Video Loops v0.9
+# Looper - Perfect Video Loops v0.91
 
 A professional video looping application that creates seamless, high-quality video loops with advanced analysis and processing capabilities.
 
@@ -57,7 +57,7 @@ Looper/
 - [Loop Mechanism](docs/LOOP_MECHANISM_DOCUMENTATION.md)
 - [Project Structure](docs/PROJECT_STRUCTURE.md)
 
-## 🎯 Version 0.9
+## 🎯 Version 0.91
 
 This version includes:
 - Complete project reorganization

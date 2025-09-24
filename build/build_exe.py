@@ -125,7 +125,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Looper_v0.9_by_Ghosteam',
+    name='Looper_v0.91_by_Ghosteam',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -172,8 +172,8 @@ def build_executable(build_dir, spec_file_path):
         if result.returncode == 0:
             print("✓ Executable built successfully!")
             # Copy executable back to original location
-            exe_src = os.path.join(build_dir, 'dist', 'Looper_v0.9_by_Ghosteam.exe')
-            exe_dst = os.path.join(original_cwd, 'dist', 'Looper_v0.9_by_Ghosteam.exe')
+            exe_src = os.path.join(build_dir, 'dist', 'Looper_v0.91_by_Ghosteam.exe')
+            exe_dst = os.path.join(original_cwd, 'dist', 'Looper_v0.91_by_Ghosteam.exe')
             os.makedirs(os.path.dirname(exe_dst), exist_ok=True)
             shutil.copy2(exe_src, exe_dst)
             print(f"✓ Executable copied to: {exe_dst}")
@@ -214,7 +214,7 @@ def cleanup_build_files(build_dir):
 def main():
     """Main build process"""
     print("=" * 50)
-    print("LOOPER v0.9 - Executable Builder")
+    print("LOOPER v0.91 - Executable Builder")
     print("by Ghosteam")
     print("=" * 50)
     
@@ -245,7 +245,7 @@ def main():
         cleanup_build_files(build_dir)
     
     # Check if executable was created
-    exe_path = os.path.join('dist', 'Looper_v0.9_by_Ghosteam.exe')
+    exe_path = os.path.join('dist', 'Looper_v0.91_by_Ghosteam.exe')
     if os.path.exists(exe_path):
         file_size = os.path.getsize(exe_path) / (1024 * 1024)  # Size in MB
         print(f"✓ Executable created: {exe_path}")

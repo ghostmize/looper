@@ -1,6 +1,6 @@
-# 🔒 Code Signing Guide for Looper
+# 🔒 Free Solutions for Browser False Positives
 
-This guide explains how to code sign your Looper executable to prevent browsers and antivirus software from flagging it as a virus.
+This guide explains **free alternatives** to code signing that effectively prevent browsers and antivirus software from flagging your Looper executable as a virus.
 
 ## 🎯 Why Code Sign?
 
@@ -9,32 +9,54 @@ This guide explains how to code sign your Looper executable to prevent browsers 
 - **Professional appearance**: Makes your software look legitimate and trustworthy
 - **Windows SmartScreen**: Helps build reputation with Microsoft's security system
 
-## 📋 Code Signing Options
+## 🆓 Free Solutions (Recommended for Free Tools)
 
-### 1. Commercial Code Signing Certificate (Recommended)
+### 1. Windows Defender SmartScreen Reputation (Most Effective)
 
-**Best for:** Professional distribution, maximum trust
+**How it works:**
+- Submit your unsigned EXE to Microsoft
+- Users download and run it
+- Over time, Windows learns it's safe
+- Eventually stops showing warnings
 
-**Top Providers:**
-- **DigiCert** (~$400-600/year) - Most trusted, works everywhere
-- **Sectigo** (~$200-400/year) - Good reputation, more affordable  
-- **GlobalSign** (~$300-500/year) - Reliable, good support
-- **SSL.com** (~$200-300/year) - Budget-friendly option
+**Steps:**
+1. Build your EXE normally
+2. Upload to your website/GitHub
+3. Encourage users to download and run it
+4. After ~100-200 downloads, SmartScreen stops flagging it
 
-**Requirements:**
-- Business registration (LLC, Corporation, etc.)
-- Identity verification documents
-- Business address verification
-- Phone verification
+**Time to effectiveness:** 2-4 weeks with regular downloads
 
-### 2. Self-Signed Certificate (Free but Limited)
+### 2. Antivirus Whitelisting (Free)
 
-**Best for:** Testing, internal distribution, learning
+Submit your EXE to major antivirus vendors:
 
-**Limitations:**
-- Browsers will still show warnings
-- Users need to manually trust the certificate
-- Not suitable for public distribution
+**Vendors to contact:**
+- **Microsoft Defender**: Submit through Windows Security
+- **Avast**: https://www.avast.com/submit-sample
+- **AVG**: https://www.avg.com/submit-sample
+- **Kaspersky**: https://opentip.kaspersky.com/
+- **Malwarebytes**: https://www.malwarebytes.com/business/support
+
+### 3. Distribution Strategy (Free)
+
+**GitHub Releases:**
+- GitHub has good reputation with browsers
+- Users expect to download from GitHub
+- Less likely to trigger warnings
+
+**Alternative hosting:**
+- SourceForge (good for open source)
+- Your own website with clear instructions
+
+### 4. Commercial Code Signing (Not Recommended for Free Tools)
+
+**Cost:** $200-600/year - **Not economical for free software**
+
+**When to consider:**
+- You're making money from the software
+- You have a business that can justify the cost
+- You're distributing to enterprise customers
 
 ## 🛠️ Implementation
 

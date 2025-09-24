@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Build script to create a portable .exe file for Looper
+Build script to create a DEBUG portable .exe file for Looper
+This version keeps the console window open to show debug output
 Now with UPX + strip support for smaller executables
 """
 
@@ -50,13 +51,13 @@ def create_clean_build_environment():
     """Create a clean build environment with only necessary files"""
     print("Creating clean build environment...")
     
-    temp_dir = tempfile.mkdtemp(prefix='looper_build_')
+    temp_dir = tempfile.mkdtemp(prefix='looper_build_debug_')
     print(f"✓ Created temporary build directory: {temp_dir}")
     
     # Copy source files
     src_dir = os.path.join(temp_dir, 'src')
     os.makedirs(src_dir, exist_ok=True)
-    shutil.copy2('../src/looper_tester.py', src_dir)
+    shutil.copy2('../src/looper.py', src_dir)
     shutil.copy2('../src/launch_looper.py', src_dir)
     print("✓ Copied source files")
     
@@ -68,8 +69,8 @@ def create_clean_build_environment():
     return temp_dir
 
 def create_spec_file(build_dir):
-    """Create a custom .spec file for better control over the build"""
-    looper_py = os.path.join(build_dir, 'src', 'looper_tester.py').replace('\\', '/')
+    """Create a custom .spec file for DEBUG build with console enabled"""
+    looper_py = os.path.join(build_dir, 'src', 'looper.py').replace('\\', '/')
     src_path = os.path.join(build_dir, 'src').replace('\\', '/')
     logo_png = os.path.join(build_dir, 'assets', 'logos', 'looper_logo.png').replace('\\', '/')
     icon_ico = os.path.join(build_dir, 'assets', 'icons', 'looper_icon.ico').replace('\\', '/')
@@ -98,7 +99,8 @@ a = Analysis(
         'numpy',
         'PIL',
         'PIL.Image',
-        'PIL.ImageTk'
+        'PIL.ImageTk',
+        'tkinterdnd2'
     ],
     hookspath=[],
     hooksconfig={{}},
@@ -132,14 +134,14 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Looper_v0.9_Tester_by_Ghosteam',
-    debug=False,
+    name='Looper_v0.91_DEBUG_by_Ghosteam',
+    debug=True,  # Enable debug mode
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=False,  # Don't strip symbols for better debugging
     upx={upx_enabled},
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,  # Keep console window open for debug output
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -150,16 +152,17 @@ exe = EXE(
 )
 '''
     
-    spec_file_path = os.path.join(build_dir, 'looper.spec')
+    spec_file_path = os.path.join(build_dir, 'looper_debug.spec')
     with open(spec_file_path, 'w') as f:
         f.write(spec_content)
     
-    print(f"✓ Created custom .spec file (UPX enabled: {upx_enabled})")
+    print(f"✓ Created DEBUG .spec file (UPX enabled: {upx_enabled})")
+    print("✓ Console window will be visible for debug output")
     return spec_file_path
 
 def build_executable(build_dir, spec_file_path):
     """Build the executable using PyInstaller"""
-    print("Building executable...")
+    print("Building DEBUG executable...")
     
     try:
         original_cwd = os.getcwd()
@@ -175,12 +178,12 @@ def build_executable(build_dir, spec_file_path):
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
-            print("✓ Executable built successfully!")
-            exe_src = os.path.join(build_dir, 'dist', 'Looper_v0.9_Tester_by_Ghosteam.exe')
-            exe_dst = os.path.join(original_cwd, 'dist', 'Looper_v0.9_Tester_by_Ghosteam.exe')
+            print("✓ DEBUG Executable built successfully!")
+            exe_src = os.path.join(build_dir, 'dist', 'Looper_v0.91_DEBUG_by_Ghosteam.exe')
+            exe_dst = os.path.join(original_cwd, 'dist', 'Looper_v0.91_DEBUG_by_Ghosteam.exe')
             os.makedirs(os.path.dirname(exe_dst), exist_ok=True)
             shutil.copy2(exe_src, exe_dst)
-            print(f"✓ Executable copied to: {exe_dst}")
+            print(f"✓ DEBUG Executable copied to: {exe_dst}")
             return True
         else:
             print("✗ Build failed:")
@@ -202,18 +205,22 @@ def cleanup_build_files(build_dir):
     if os.path.exists('build'):
         shutil.rmtree('build')
         print("✓ Removed local build directory")
-    if os.path.exists('looper.spec'):
-        os.remove('looper.spec')
+    if os.path.exists('looper_debug.spec'):
+        os.remove('looper_debug.spec')
         print("✓ Removed spec file")
 
 def main():
-    print("=" * 50)
-    print("LOOPER v0.9 - Executable Builder")
+    print("=" * 60)
+    print("LOOPER v0.91 - DEBUG Executable Builder")
     print("by Ghosteam")
-    print("=" * 50)
+    print("=" * 60)
+    print("🔧 DEBUG MODE: Console window will be visible")
+    print("🔧 DEBUG MODE: All debug output will be shown")
+    print("🔧 DEBUG MODE: FFmpeg errors will be visible")
+    print("=" * 60)
     
-    if not os.path.exists('../src/looper_tester.py'):
-        print("✗ looper_tester.py not found in src directory")
+    if not os.path.exists('../src/looper.py'):
+        print("✗ looper.py not found in src directory")
         return False
     
     if not install_pyinstaller():
@@ -231,20 +238,27 @@ def main():
     finally:
         cleanup_build_files(build_dir)
     
-    exe_path = os.path.join('dist', 'Looper_v0.9_Tester_by_Ghosteam.exe')
+    exe_path = os.path.join('dist', 'Looper_v0.91_DEBUG_by_Ghosteam.exe')
     if os.path.exists(exe_path):
         file_size = os.path.getsize(exe_path) / (1024 * 1024)
-        print(f"✓ Executable created: {exe_path}")
+        print(f"✓ DEBUG Executable created: {exe_path}")
         print(f"✓ File size: {file_size:.1f} MB")
-        print("\n" + "=" * 50)
-        print("BUILD COMPLETE!")
-        print("=" * 50)
-        print(f"Your portable executable is ready:")
+        print("\n" + "=" * 60)
+        print("DEBUG BUILD COMPLETE!")
+        print("=" * 60)
+        print(f"Your DEBUG executable is ready:")
         print(f"📁 Location: {os.path.abspath(exe_path)}")
         print(f"📦 Size: {file_size:.1f} MB")
+        print("\n🔧 DEBUG FEATURES:")
+        print("• Console window will stay open")
+        print("• All debug output will be visible")
+        print("• FFmpeg errors will be shown")
+        print("• Users can copy error messages to send you")
+        print("\n⚠️  This is a DEBUG version - larger file size")
+        print("⚠️  Use this for troubleshooting only")
         return True
     else:
-        print("✗ Executable not found after build")
+        print("✗ DEBUG Executable not found after build")
         return False
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# 🚀 Building Looper v0.9 Portable Executable
+# 🚀 Building Looper v0.91 Portable Executable
 
 This guide explains how to create a single, portable `.exe` file for Looper that can run on any Windows computer without requiring Python installation.
 
@@ -36,13 +36,13 @@ pip install -r requirements_build.txt
 
 ### 3. Build the Executable
 ```bash
-pyinstaller --onefile --windowed --name "Looper_v0.9_by_Ghosteam" looper.py
+pyinstaller --onefile --windowed --name "Looper_v0.91_by_Ghosteam" looper.py
 ```
 
 ## 🎯 Build Output
 
 After successful build, you'll find:
-- **`dist/Looper_v0.9_by_Ghosteam.exe`** - Your portable executable (~50-80MB)
+- **`dist/Looper_v0.91_by_Ghosteam.exe`** - Your portable executable (~50-80MB)
 - **`build/`** - Temporary build files (can be deleted)
 - **`looper.spec`** - PyInstaller specification file (can be deleted)
 
@@ -115,5 +115,5 @@ The executable includes all Python dependencies and the Looper application in a 
 
 ---
 
-**Looper v0.9 by Ghosteam** - Perfect Video Loops Made Simple
+**Looper v0.91 by Ghosteam** - Perfect Video Loops Made Simple
 

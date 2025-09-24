@@ -34,14 +34,14 @@ def resource_path(relpath: str) -> str:
 # Optional: stable taskbar identity so Windows ties the window to your EXE icon
 try:
     import ctypes
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Ghosteam.Looper.0.9')
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Ghosteam.Looper.0.91')
 except Exception:
     pass
 
 class LooperApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("◉ LOOPER v0.9 - Perfect Video Loops")
+        self.root.title("◉ LOOPER v0.92 - Perfect Video Loops")
         self.root.geometry("950x950")
         
         # Optional: give the app a stable AppUserModelID so taskbar uses this icon
@@ -90,6 +90,9 @@ class LooperApp:
         
         # FFmpeg detection state
         self.ffmpeg_available = False
+        self.ffmpeg_hap_ready = False  # whether ffmpeg has HAP encoder
+        self.ffmpeg_exe = None   # absolute path to ffmpeg once found
+        self.ff_has_hap = False  # whether ffmpeg supports HAP encoding
         self.ffmpeg_status_label = None
         self.ffmpeg_install_prompt_shown = False  # Prevent infinite prompts
         
@@ -186,7 +189,7 @@ class LooperApp:
         
         version_label = tk.Label(
             right_header, 
-            text="v0.9", 
+            text="v0.92", 
             font=("Consolas", 12, "bold"), 
             fg=self.colors['accent_secondary'], 
             bg=self.colors['bg_primary']
@@ -383,7 +386,7 @@ class LooperApp:
         # Title
         title_label = tk.Label(
             main_container,
-            text="LOOPER v0.9",
+            text="LOOPER v0.92",
             font=("Consolas", 18, "bold"),
             fg=self.colors['accent_primary'],
             bg=self.colors['bg_primary']
@@ -459,35 +462,54 @@ class LooperApp:
     
     
     def check_ffmpeg_installation(self):
-        """Check if FFmpeg is installed and available"""
+        """Check if FFmpeg is installed and available with enhanced detection"""
         try:
             print("🔍 Checking FFmpeg installation...")
             
-            # Try to find FFmpeg in PATH
+            # Method 1: Try to find FFmpeg in PATH
             ffmpeg_path = which('ffmpeg')
             if ffmpeg_path:
-                # Test if FFmpeg actually works
-                try:
-                    result = subprocess.run(
-                        ['ffmpeg', '-version'],
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                    )
-                    if result.returncode == 0:
-                        self.ffmpeg_available = True
-                        self.update_ffmpeg_status("FFmpeg Installed", self.colors['text_primary'])
-                        self.ffmpeg_install_prompt_shown = False  # Reset flag when FFmpeg is found
-                        print("✅ FFmpeg is installed and working")
-                        return True
-                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-                    pass
+                print(f"Found FFmpeg in PATH: {ffmpeg_path}")
+                if self.test_ffmpeg_execution():
+                    return True
+            
+            # Method 2: Check common installation locations (Windows)
+            if os.name == 'nt':
+                common_paths = [
+                    r"C:\ffmpeg\bin\ffmpeg.exe",
+                    r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+                    r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+                    os.path.expanduser(r"~\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg*_*\ffmpeg-*\bin\ffmpeg.exe"),
+                    r"C:\Users\%USERNAME%\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg*_*\ffmpeg-*\bin\ffmpeg.exe"
+                ]
+                
+                for path in common_paths:
+                    if '*' in path:
+                        # Handle wildcard paths
+                        import glob
+                        matches = glob.glob(path)
+                        for match in matches:
+                            if os.path.exists(match):
+                                print(f"Found FFmpeg in common location: {match}")
+                                if self.test_ffmpeg_execution(match):
+                                    return True
+                    else:
+                        if os.path.exists(path):
+                            print(f"Found FFmpeg in common location: {path}")
+                            if self.test_ffmpeg_execution(path):
+                                return True
+            
+            # Method 3: Try direct execution (in case PATH is not updated)
+            if self.test_ffmpeg_execution():
+                return True
             
             # FFmpeg not found or not working
             self.ffmpeg_available = False
             self.update_ffmpeg_status("FFmpeg Missing", self.colors['error'])
             print("❌ FFmpeg not found or not working")
+            print("💡 Debug info:")
+            print(f"   - PATH: {os.environ.get('PATH', 'Not set')}")
+            print(f"   - which('ffmpeg'): {ffmpeg_path}")
             
             # Show installation prompt when FFmpeg is missing (only once)
             if not self.ffmpeg_install_prompt_shown:
@@ -506,6 +528,99 @@ class LooperApp:
                 self.root.after(1000, self.show_ffmpeg_installation_prompt)
             return False
     
+    def test_ffmpeg_execution(self, ffmpeg_path=None):
+        '''Test if FFmpeg actually works and pin its absolute path.'''
+        try:
+            # Resolve the executable we are about to test
+            exe = ffmpeg_path
+            if not exe:
+                from shutil import which
+                exe = which('ffmpeg')
+                # also try common install locations on Windows if PATH is stale
+                if not exe and os.name == 'nt':
+                    common = [
+                        r'C:\ffmpeg\bin\ffmpeg.exe',
+                        r'C:\Program Files\ffmpeg\bin\ffmpeg.exe',
+                        r'C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe',
+                    ]
+                    for cand in common:
+                        if os.path.exists(cand):
+                            exe = cand
+                            break
+            if not exe:
+                print('❌ FFmpeg not found on PATH or common locations.')
+                return False
+
+            cmd = [exe, '-version']
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            if result.returncode == 0:
+                # Pin the absolute path to this exact binary
+                self.ffmpeg_exe = os.path.abspath(exe)
+                self.ffmpeg_available = True
+                # Probe HAP support only once here
+                self._ffmpeg_supports_hap()
+                self.ffmpeg_hap_ready = self.ff_has_hap
+                status = "FFmpeg ✓ HAP" if self.ff_has_hap else "FFmpeg (no HAP)"
+                self.update_ffmpeg_status(status, self.colors['text_primary'] if self.ff_has_hap else self.colors['warning'])
+                print('✅ FFmpeg is installed and working')
+                if result.stdout:
+                    version_line = result.stdout.split('\n')[0]
+                    print(f'   Version: {version_line}')
+                print(f'   Using: {self.ffmpeg_exe}')
+                print(f'   HAP available: {self.ff_has_hap}')
+                return True
+            else:
+                print(f'❌ FFmpeg execution failed with return code: {result.returncode}')
+                if result.stderr:
+                    print(f'   Error: {result.stderr[:200]}...')
+                return False
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+            print(f'❌ FFmpeg execution error: {e}')
+            return False
+    
+    def _ff(self, *args):
+        """Build a subprocess arg list that always uses the resolved ffmpeg.exe."""
+        exe = self.ffmpeg_exe or 'ffmpeg'
+        return [exe, *args]
+
+    def _ffmpeg_supports_hap(self):
+        """Probe for HAP support in the current FFmpeg installation."""
+        try:
+            out = subprocess.run(
+                self._ff('-hide_banner', '-encoders'),
+                capture_output=True, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            enc = out.stdout.lower()
+            # hap, hap_alpha, hap_q, hap_hq variants are all ok
+            self.ff_has_hap = bool(re.search(r'^\s*v.*\bhap(_alpha|_q|_hq)?\b', enc, re.M))
+        except Exception:
+            self.ff_has_hap = False
+        return self.ff_has_hap
+
+    def ensure_hap_or_prompt(self) -> bool:
+        """Return True only if ffmpeg exists AND has HAP. Otherwise, prompt to install full FFmpeg."""
+        if not self.ffmpeg_available:
+            self.show_ffmpeg_installation_prompt()
+            return False
+        if not self.ff_has_hap:
+            messagebox.showerror(
+                "HAP encoder required",
+                "Your FFmpeg is installed but lacks the HAP encoder.\n\n"
+                "Click OK to install the full build (Gyan.FFmpeg.Full) that includes HAP."
+            )
+            # Treat HAP-less FFmpeg as 'not installed' for HAP workflow
+            self.ffmpeg_available = False
+            self.show_ffmpeg_installation_prompt()
+            return False
+        return True
+
     def update_ffmpeg_status(self, text, color):
         """Update FFmpeg status label with minimalistic text"""
         if self.ffmpeg_status_label:
@@ -535,9 +650,9 @@ class LooperApp:
             print("🚀 Installing FFmpeg via winget...")
             self.update_ffmpeg_status("Installing FFmpeg...", self.colors['accent_primary'])
             
-            # Run winget install command
+            # Run winget install command - use full build with all encoders
             cmd = [
-                'winget', 'install', 'Gyan.FFmpeg',
+                'winget', 'install', 'Gyan.FFmpeg.Full',
                 '--accept-package-agreements',
                 '--accept-source-agreements',
                 '--silent'
@@ -553,16 +668,56 @@ class LooperApp:
             
             if result.returncode == 0:
                 print("✅ FFmpeg installed successfully")
+                
+                # Try to resolve the installed FFmpeg path immediately
+                possible = [
+                    r"C:\ffmpeg\bin\ffmpeg.exe",
+                    r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+                    r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+                    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg*_*\ffmpeg-*\bin\ffmpeg.exe"),
+                ]
+                resolved = None
+                import glob
+                for p in possible:
+                    if '*' in p:
+                        matches = glob.glob(p)
+                        if matches:
+                            # pick latest by version folder name
+                            matches.sort(reverse=True)
+                            resolved = matches[0]
+                            break
+                    elif os.path.exists(p):
+                        resolved = p
+                        break
+
+                if not resolved:
+                    # final fallback to which (if PATH updated in this very session)
+                    from shutil import which
+                    resolved = which('ffmpeg')
+
+                if resolved:
+                    self.ffmpeg_exe = os.path.abspath(resolved)
+                    self._ffmpeg_supports_hap()
+                    self.ffmpeg_hap_ready = self.ff_has_hap
+                    print(f'✅ FFmpeg path pinned to: {self.ffmpeg_exe}')
+                    print(f'   HAP available: {self.ff_has_hap}')
+                    
+                    # Re-probe HAP and refuse to proceed if still missing
+                    if not self.ff_has_hap:
+                        messagebox.showerror("HAP still missing",
+                            "Installed FFmpeg, but HAP encoder wasn't detected.\n"
+                            "Please download the full static build from Gyan.dev (ffmpeg-git-full) and try again.")
+                        return False
+                
                 self.update_ffmpeg_status("FFmpeg Installed", self.colors['text_primary'])
                 self.ffmpeg_available = True
                 
-                # Show success message and restart prompt
+                # Show success message
                 messagebox.showinfo(
                     "Installation Complete",
                     "FFmpeg has been installed successfully!\n\n"
-                    "IMPORTANT: Please close and restart LOOPER completely\n"
-                    "to use the newly installed FFmpeg.\n\n"
-                    "The current session cannot detect the new installation."
+                    "The application will now use the newly installed FFmpeg.\n"
+                    "No restart required!"
                 )
                 return True
             else:
@@ -631,7 +786,11 @@ class LooperApp:
                 "3. Add the 'bin' folder to your system PATH\n"
                 "4. Restart LOOPER\n\n"
                 "Alternatively, you can use winget:\n"
-                "winget install Gyan.FFmpeg"
+                "winget install Gyan.FFmpeg.Full\n\n"
+                "If you continue having issues after installation:\n"
+                "• Try restarting your computer\n"
+                "• Check if FFmpeg is in your system PATH\n"
+                "• Contact support with the debug information"
             )
     
     def normalize_path(self, path):
@@ -1222,13 +1381,20 @@ class LooperApp:
         """Handle format selection change"""
         if self.format_var.get() == "MP4":
             self.settings_button.pack(side=tk.LEFT)
-        else:
-            self.settings_button.pack_forget()
+            return
+        # HAP chosen → enforce
+        self.settings_button.pack_forget()
+        if not self.ensure_hap_or_prompt():
+            # user will install; keep selection on HAP so behavior is clear
+            pass
     
     def check_initial_format(self):
         """Check initial format and show settings button if needed"""
         if self.format_var.get() == "MP4":
             self.settings_button.pack(side=tk.LEFT)
+        else:  # HAP default
+            self.settings_button.pack_forget()
+            self.ensure_hap_or_prompt()
     
     def toggle_overlap_mode(self):
         """Toggle between seconds and frames mode"""
@@ -1755,8 +1921,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         """Process all selected videos"""
         if not self.video_paths or self.is_processing:
             return
-        
-        # Check FFmpeg availability before processing
+        if self.format_var.get() == "HAP" and not self.ensure_hap_or_prompt():
+            return
         if not self.ffmpeg_available:
             self.show_ffmpeg_installation_prompt()
             return
@@ -1840,6 +2006,18 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
     def process_single_video(self, video_info, output_path, output_format):
         """Process a single video file"""
         try:
+            # Check HAP encoder availability if HAP format is selected
+            if output_format == "HAP" and not self.ff_has_hap:
+                messagebox.showerror(
+                    "HAP Encoder Missing",
+                    "Your FFmpeg build does not include HAP encoder.\n\n"
+                    "Please install a full FFmpeg build with HAP support:\n"
+                    "• Use the installer to get Gyan.FFmpeg.Full\n"
+                    "• Or download ffmpeg-git-full.7z from Gyan.dev\n"
+                    "• Extract and place ffmpeg.exe manually"
+                )
+                return False
+            
             # Normalize input and output paths
             input_path = self.normalize_path(video_info['path'])
             output_path = self.normalize_path(output_path)
@@ -1927,8 +2105,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         """Try the complex filter method for creating loops"""
         try:
             # Build ffmpeg command for crossfade loop
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',  # Overwrite output
+            ffmpeg_cmd = self._ff(
+                '-y',  # Overwrite output
                 '-i', self.video_path,  # Input video
                 '-filter_complex', self.build_filter_complex(overlap_frames, total_frames, 30),
                 '-map', '[outv]',  # Map the output from filter complex
@@ -1937,7 +2115,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 '-crf', self.get_crf_value(output_format),
                 '-pix_fmt', 'yuv420p',  # Ensure compatibility with H.264
                 self.output_path
-            ]
+            )
             
             # Debug: Print the command
             print("FFmpeg command:", ' '.join(ffmpeg_cmd))
@@ -1983,8 +2161,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             # This creates a basic loop that can be played in a loop
             duration = self.video_info['duration']
             
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
+            ffmpeg_cmd = self._ff(
+                '-y',
                 '-i', self.video_path,
                 '-filter_complex', f'[0:v]loop=loop=1:size=1,trim=duration={duration*2}[outv]',
                 '-map', '[outv]',
@@ -1993,7 +2171,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 '-crf', self.get_crf_value(output_format),
                 '-pix_fmt', 'yuv420p',  # Ensure compatibility
                 self.output_path
-            ]
+            )
             
             print("Simple loop command:", ' '.join(ffmpeg_cmd))
             
@@ -2033,15 +2211,15 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
         try:
             # Simply copy the video without any processing
             # This ensures we can at least save the video in the desired format
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
+            ffmpeg_cmd = self._ff(
+                '-y',
                 '-i', self.video_path,
                 '-c:v', self.get_codec(output_format),
                 '-preset', 'fast',
                 '-crf', self.get_crf_value(output_format),
                 '-pix_fmt', 'yuv420p',
                 self.output_path
-            ]
+            )
             
             print("Basic copy command:", ' '.join(ffmpeg_cmd))
             
@@ -2096,8 +2274,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             self.current_video_frames = total_frames
             
             # Build ffmpeg command for crossfade loop
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',  # Overwrite output
+            ffmpeg_cmd = self._ff(
+                '-y',  # Overwrite output
                 '-i', input_path,  # Input video
                 '-filter_complex', self.build_filter_complex(overlap_frames, total_frames, fps),
                 '-map', '[outv]',  # Map the output from filter complex
@@ -2106,7 +2284,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 '-crf', self.get_crf_value(output_format),
                 '-pix_fmt', 'yuv420p',  # Ensure compatibility with H.264
                 output_path
-            ]
+            )
             
             # Debug: Print the exact command and filter being used
             print("=" * 60)
@@ -2181,8 +2359,8 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
             self.current_video_duration = duration * 2  # Double duration for loop
             self.current_video_frames = int(duration * 2 * 30)  # Estimate frames
             
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
+            ffmpeg_cmd = self._ff(
+                '-y',
                 '-i', input_path,
                 '-filter_complex', f'[0:v]loop=loop=1:size=1,trim=duration={duration*2}[outv]',
                 '-map', '[outv]',
@@ -2191,7 +2369,7 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 '-crf', self.get_crf_value(output_format),
                 '-pix_fmt', 'yuv420p',
                 output_path
-            ]
+            )
             
             process = subprocess.Popen(
                 ffmpeg_cmd,
@@ -2254,15 +2432,15 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                 self.current_video_duration = 0
                 self.current_video_frames = 0
             
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
+            ffmpeg_cmd = self._ff(
+                '-y',
                 '-i', input_path,
                 '-c:v', self.get_codec(output_format),
                 '-preset', 'fast',
                 '-crf', '18',
                 '-pix_fmt', 'yuv420p',
                 output_path
-            ]
+            )
             
             process = subprocess.Popen(
                 ffmpeg_cmd,
@@ -2504,31 +2682,6 @@ Size: {self.video_info['file_size_mb']:.1f} MB"""
                             self.process_button.config(state=tk.NORMAL)
             except:
                 pass
-    
-    def parse_ffmpeg_progress(self, line):
-        """Parse FFmpeg progress output and return progress percentage"""
-        try:
-            # Look for time progress: time=00:00:15.00
-            time_match = re.search(r'time=(\d{2}):(\d{2}):(\d{2}\.\d{2})', line)
-            if time_match and self.current_video_duration > 0:
-                hours = int(time_match.group(1))
-                minutes = int(time_match.group(2))
-                seconds = float(time_match.group(3))
-                current_time = hours * 3600 + minutes * 60 + seconds
-                progress = min(95, (current_time / self.current_video_duration) * 100)
-                return progress
-            
-            # Look for frame progress: frame= 1234
-            frame_match = re.search(r'frame=\s*(\d+)', line)
-            if frame_match and hasattr(self, 'current_video_frames') and self.current_video_frames > 0:
-                current_frame = int(frame_match.group(1))
-                progress = min(95, (current_frame / self.current_video_frames) * 100)
-                return progress
-                
-        except Exception as e:
-            print(f"Error parsing FFmpeg progress: {e}")
-        
-        return None
     
     def update_status(self, message, progress):
         """Update status with thread-safe GUI updates"""

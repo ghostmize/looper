@@ -1,5 +1,5 @@
 @echo off
-echo Preparing Looper v0.9 for Git commit...
+echo Preparing Looper v0.91 for Git commit...
 echo.
 
 REM Check if git is available
@@ -18,9 +18,9 @@ REM Add all files
 echo Adding files to git...
 git add .
 
-REM Commit with version 0.9 message
+REM Commit with version 0.91 message
 echo Committing changes...
-git commit -m "v0.9: Complete project reorganization and cleanup
+git commit -m "v0.91: Complete project reorganization and cleanup
 
 - Organized files into logical folder structure
 - Moved source code to src/ folder

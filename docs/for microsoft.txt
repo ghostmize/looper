@@ -1,4 +1,4 @@
-The provided file Looper_v0.91_by_Ghosteam is a Python application that builds a desktop GUI using Tkinter. It is a media utility called Looper v0.9 – Perfect Video Loops, developed by Ghosteam. The tool allows users to import video files, analyze their properties (resolution, FPS, duration, file size), and then process them with FFmpeg to generate seamless looping video files. It supports batch processing, drag-and-drop input, adjustable crossfade duration (seconds or frames), and output in formats like HAP (.mov) or MP4.
+The provided file Looper_v0.91_by_Ghosteam is a Python application that builds a desktop GUI using Tkinter. It is a media utility called Looper v0.91 – Perfect Video Loops, developed by Ghosteam. The tool allows users to import video files, analyze their properties (resolution, FPS, duration, file size), and then process them with FFmpeg to generate seamless looping video files. It supports batch processing, drag-and-drop input, adjustable crossfade duration (seconds or frames), and output in formats like HAP (.mov) or MP4.
 
 The script contains no malicious code:
 

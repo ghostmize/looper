@@ -126,14 +126,14 @@ def log_comprehensive_error(error_type, error_message, error_details=None, log_f
 # Optional: stable taskbar identity so Windows ties the window to your EXE icon
 try:
     import ctypes
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Ghosteam.Looper.0.9')
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Ghosteam.Looper.0.91')
 except Exception:
     pass
 
 class LooperApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("◉ LOOPER v0.9 - Perfect Video Loops")
+        self.root.title("◉ LOOPER v0.91 - Perfect Video Loops")
         self.root.geometry("950x950")
         
         # Optional: give the app a stable AppUserModelID so taskbar uses this icon
@@ -260,7 +260,7 @@ class LooperApp:
         
         version_label = tk.Label(
             right_header, 
-            text="v0.9", 
+            text="v0.91", 
             font=("Consolas", 12, "bold"), 
             fg=self.colors['accent_secondary'], 
             bg=self.colors['bg_primary']
@@ -457,7 +457,7 @@ class LooperApp:
         # Title
         title_label = tk.Label(
             main_container,
-            text="LOOPER v0.9",
+            text="LOOPER v0.91",
             font=("Consolas", 18, "bold"),
             fg=self.colors['accent_primary'],
             bg=self.colors['bg_primary']

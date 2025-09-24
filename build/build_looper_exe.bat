@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo LOOPER v0.9 - Executable Builder
+echo LOOPER v0.91 - Executable Builder
 echo by Ghosteam
 echo ========================================
 echo.
